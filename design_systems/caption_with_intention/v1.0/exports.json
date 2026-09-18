@@ -1,0 +1,36 @@
+{
+  "sidecar_exports": {
+    "srt": {
+      "description": "Conventional text + timing only, does not encode full CI visual fidelity",
+      "priority": "compatibility"
+    },
+    "vtt": {
+      "description": "Same principle, preserve supported cue formatting only",
+      "priority": "compatibility"
+    },
+    "ttml": {
+      "description": "Richer caption metadata for environments that accept it",
+      "priority": "compatibility"
+    },
+    "ass_ssa": {
+      "description": "Optional styled subtitle interchange, more styling than SRT",
+      "priority": "compatibility"
+    }
+  },
+  "burned_in_video": {
+    "description": "Full-fidelity CI output",
+    "never_overwrite_source_by_default": true,
+    "preserve_source_video": true,
+    "prefer_stream_copy_audio": true,
+    "hardware_acceleration": "when_available",
+    "configurable_output_container": true,
+    "configurable_codec_quality": true
+  },
+  "export_presets": [
+    "Social_Short",
+    "1080p",
+    "4K",
+    "Source_Resolution",
+    "Custom"
+  ]
+}

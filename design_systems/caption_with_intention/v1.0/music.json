@@ -1,0 +1,16 @@
+{
+  "music_descriptor": {
+    "color": "white",
+    "symbol_convention": "design_system_v1.0",
+    "glyph_source": "v1.0_design_profile_not_guessed_at_runtime",
+    "animation": "not_word_by_word",
+    "character_color_assignment": "none"
+  },
+  "default_descriptors": [
+    "Soft piano",
+    "Upbeat orchestral",
+    "Ambient synth",
+    "Acoustic guitar",
+    "Full orchestra"
+  ]
+}

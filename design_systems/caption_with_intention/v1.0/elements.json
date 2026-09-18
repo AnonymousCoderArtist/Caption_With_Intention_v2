@@ -1,0 +1,39 @@
+{
+  "caption_box": {
+    "color": "black",
+    "opacity": 0.90,
+    "position": "behind_caption_text",
+    "background_visible": true,
+    "exception": "very_loud_sudden_bursts_may_break_outside_box_if_approved"
+  },
+  "box_sizing": {
+    "mode": "dynamic_to_content",
+    "max_text_lines": 2,
+    "line_spacing": "explicit_and_editable",
+    "recalculate_after_variable_font_sizing": true
+  },
+  "work_area": {
+    "position": "lower_20_percent_of_frame",
+    "safety_margins": {
+      "bottom": "proportional",
+      "left": "proportional",
+      "right": "proportional"
+    },
+    "no_ci_element_outside_unless_approved_exception": true
+  },
+  "sound_effects": {
+    "color": "white",
+    "brackets": "square",
+    "bracket_style": "[text]",
+    "assigned_character_color": false,
+    "follow_ci_animation_principles": true,
+    "loud_events_can_grow_and_pop": true
+  },
+  "music": {
+    "color": "white",
+    "symbol_treatment": "design_system_musical_symbol_convention",
+    "treated_like_classic_captions": true,
+    "word_by_word_animated": false,
+    "change_character_color": false
+  }
+}

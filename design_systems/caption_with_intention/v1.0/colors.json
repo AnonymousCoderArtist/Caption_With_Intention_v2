@@ -1,0 +1,42 @@
+{
+  "main": {
+    "yellow": "#E5E517",
+    "blue_cyan": "#17E5E5",
+    "red": "#E51717",
+    "orange": "#E58017",
+    "green": "#17E517",
+    "pink": "#E517E5"
+  },
+  "supporting": [
+    "#E85C2E",
+    "#47C2EB",
+    "#EBC247",
+    "#5E82ED",
+    "#C2EB47",
+    "#8C6BED",
+    "#82ED5E",
+    "#CC6BED",
+    "#47EB70",
+    "#EB47C2",
+    "#5EEDC9",
+    "#ED5E82"
+  ],
+  "minor": {
+    "saturation": 0.30,
+    "brightness": 0.90,
+    "count": 24,
+    "method": "pastel_near_white_hue_sweep"
+  },
+  "assignment_rules": {
+    "main_character_count_3": "maximize_spectrum_separation",
+    "hero_villain": "opposite_positions_in_main_palette",
+    "supporting_selection": "shades_between_main_colors_preserving_visual_distance",
+    "collision_validator": "run_before_final_export",
+    "every_color_different": true
+  },
+  "off_camera": {
+    "color": "same_speaker_assigned_color",
+    "italic": true,
+    "attribution_visible": true
+  }
+}

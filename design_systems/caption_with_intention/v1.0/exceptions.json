@@ -1,0 +1,43 @@
+{
+  "profiles": {
+    "project": {
+      "label": "Project Profile",
+      "description": "Default behavior for entire project",
+      "toggles": [
+        "attribution_colors_on_off",
+        "synchronization_color_layer_on_off",
+        "pop_animation_on_off",
+        "variable_size_on_off",
+        "pitch_weight_mapping_on_off",
+        "harmonic_width_mapping_on_off",
+        "sound_effect_animation_on_off",
+        "caption_box_breakout_permission",
+        "roman_italic_override"
+      ]
+    },
+    "scene": {
+      "label": "Scene Profile",
+      "description": "Per-scene behavior overrides",
+      "toggles": "same_as_project"
+    },
+    "caption_event": {
+      "label": "Caption Event Profile",
+      "description": "Per-caption-event behavior overrides"
+    },
+    "single_word": {
+      "label": "Single Word Override",
+      "description": "Per-word override"
+    }
+  },
+  "full_attribution": true,
+  "animation_only": false,
+  "scene_type_detection": {
+    "black_and_white": {
+      "method": "analyze_middle_frame_of_video",
+      "suggested_profile": "animation_without_attribution_colors"
+    },
+    "color": {
+      "suggested_profile": "full_ci"
+    }
+  }
+}

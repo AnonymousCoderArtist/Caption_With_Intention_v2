@@ -1,0 +1,38 @@
+{
+  "typeface": {
+    "default": "Roboto Flex",
+    "fallback": "sans-serif",
+    "variable_axes": ["wght", "wdth", "opsz", "SOFT", "WONK"],
+    "font_file": "RobotoFlex.ttf"
+  },
+  "type_size": {
+    "unit": "percent_of_screen_height",
+    "baseline_pct": 5.0,
+    "minimum_pct": 3.0,
+    "maximum_pct": 12.0,
+    "baseline_voice_hz_range": [160, 200],
+    "baseline_weight": 400
+  },
+  "pitch_weight_mapping": {
+    "low_hz_range": [80, 160],
+    "low_hz_effect": "heavier_type",
+    "baseline_hz_range": [160, 200],
+    "baseline_hz_effect": "neutral_regular_400",
+    "high_hz_range": [200, null],
+    "high_hz_effect": "lighter_type",
+    "smoothing": true
+  },
+  "harmonics_width_mapping": {
+    "low_harmonic_dominance": "wider_expanded_type",
+    "high_harmonic_dominance": "narrower_condensed_type",
+    "expose_measured_signal": true,
+    "expose_mapped_value": true
+  },
+  "volume_mapping": {
+    "input_signals": ["local_rms_energy", "peak", "short_term_loudness", "speech_normalized_loudness"],
+    "quieter_speech": "smaller_type",
+    "normal_speech": "approximately_baseline_size",
+    "louder_speech": "larger_type",
+    "human_override": true
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "design_system": "caption-with-intention",
+  "version": "v1.0",
+  "schema_version": "ci-project-1",
+  "description": "Caption With Intention V1.0 Design System Profile — deterministic rules for color attribution, synchronization, intonation, and caption rendering",
+  "source": "Caption-With-Intention_Design-System_V1.0.pdf",
+  "community_validated": true,
+  "validation_period": "2024-02 to 2024-12",
+  "community_partner": "Chicago Hearing Society"
+}
