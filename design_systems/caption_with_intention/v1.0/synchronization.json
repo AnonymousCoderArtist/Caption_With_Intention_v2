@@ -1,0 +1,24 @@
+{
+  "read_ahead_layer": {
+    "color": "white",
+    "opacity": 0.90,
+    "description": "Complete white sentence readable ahead of speech"
+  },
+  "color_sync_layer": {
+    "anchor": "word_onset",
+    "description": "Speaker color revealed at start of spoken word, not word completion",
+    "color": "speaker_assigned_color"
+  },
+  "pop_animation": {
+    "scale_pct": 15,
+    "default_scale_multiplier": 1.15,
+    "easing": "smooth_configurable_curve",
+    "trigger": "word_onset"
+  },
+  "syllable_variation": {
+    "modes": ["word_mode", "syllable_mode"],
+    "low_confidence_default": "word_mode",
+    "flag_for_review": true,
+    "description": "Animate syllable units independently when alignment confidence is sufficient"
+  }
+}
