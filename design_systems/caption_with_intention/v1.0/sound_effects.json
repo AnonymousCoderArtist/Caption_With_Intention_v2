@@ -1,0 +1,23 @@
+{
+  "sound_effect_labels": [
+    "THUNDER",
+    "DOOR SLAM",
+    "LAUGHTER",
+    "CRASH",
+    "BIRD CHIRP",
+    "PHONE RING",
+    "FOOTSTEPS",
+    "KNOCK"
+  ],
+  "classification": {
+    "method": "ai_detection_with_editor_override",
+    "confidence_threshold": 0.5,
+    "editable_label": true,
+    "bracket_style": "square"
+  },
+  "loudness_driven": {
+    "sizing": true,
+    "pop_animation": true,
+    "sync_with_effect": true
+  }
+}
