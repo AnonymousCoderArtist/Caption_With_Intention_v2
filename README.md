@@ -1,7 +1,7 @@
 # Caption With Intention v2
 
 > **Caption With Intention (CWI)** is a revolutionary caption design system for movies and TV shows that transforms closed captions from plain text into a rich, expressive experience — conveying who is speaking, when they speak, and how they sound.
-
+It is for the hearing disabled people. It has won international level award and it needed a opensource project for free to automate this system soo here i am :)
 ---
 
 ## Overview
