@@ -108,7 +108,6 @@ class VideoInfo(BaseModel):
     language: Optional[str] = None
     source_hash: Optional[str] = None
     proxy_path: Optional[str] = None
-    proxy_path: Optional[str] = None
 
 
 class Project(BaseModel):
