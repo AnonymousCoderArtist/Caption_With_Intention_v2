@@ -107,6 +107,8 @@ class VideoInfo(BaseModel):
     audio_channels: Optional[int] = None
     language: Optional[str] = None
     source_hash: Optional[str] = None
+    proxy_path: Optional[str] = None
+    proxy_path: Optional[str] = None
 
 
 class Project(BaseModel):
