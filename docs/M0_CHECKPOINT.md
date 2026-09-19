@@ -42,9 +42,10 @@ This file documents the current build state for easy checkpoint recovery.
 - `bff7bc6` — baseline project state with spec and font
 - `a4394dd` — M0: Project foundation
 - `d2bf8be` — Merge: master → main (M0 complete)
+- `57c9394` — M1: Media ingest and metadata
 
 ## Branches
-- main: d2bf8be (current, up to date with origin/main)
+- main: 57c9394 (current)
 - master: d2bf8be (up to date with origin/master)
 
 ## ✅ M0 STATUS: DONE
