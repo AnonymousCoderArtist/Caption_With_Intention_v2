@@ -22,7 +22,23 @@ This file documents the current build state for easy checkpoint recovery.
 - [x] Typography mapping (engine/typography/mapping.py)
 - [x] Unit tests (31 tests, 29 passing)
 
-## ✅ Git Checkpoints
+## ✅ M1 — Media Ingest and Metadata COMPLETE
+- [x] Video probing (duration/fps/resolution via ffprobe)
+- [x] Audio stream probing (codec, sample rate, channels, language)
+- [x] Duration/fps/resolution extraction
+- [x] Embedded subtitle discovery
+- [x] Source integrity hash (SHA-256)
+- [x] Proxy generation (low-resolution FFmpeg proxy for fast analysis)
+- [x] Ingest orchestrator (engine/ingest/ingest.py)
+- [x] MediaIngestResult data model
+- [x] Project VideoInfo integration (ingest_and_update_project)
+- [x] Quick probe (lightweight metadata + hash, no proxy)
+- [x] Proxy freshness tracking
+- [x] M1 unit tests (24 tests)
+- [x] M1 verification script (scripts/verify_m1.py)
+- [x] All tests pass against real Buzz Lightyear trailer video
+
+## Git Checkpoints
 - `bff7bc6` — baseline project state with spec and font
 - `a4394dd` — M0: Project foundation
 - `d2bf8be` — Merge: master → main (M0 complete)
@@ -32,5 +48,6 @@ This file documents the current build state for easy checkpoint recovery.
 - master: d2bf8be (up to date with origin/master)
 
 ## ✅ M0 STATUS: DONE
+## ✅ M1 STATUS: DONE
 
-## Next: M1 — Media Ingest and Metadata (pending user go-ahead)
+## Next: M2 — Scene/Chunk Engine (pending user go-ahead)
