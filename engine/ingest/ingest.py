@@ -41,6 +41,7 @@ class MediaIngestResult(BaseModel):
     audio_sample_rate: Optional[int] = None
     audio_channels: Optional[int] = None
     audio_language: Optional[str] = None
+    pixel_aspect_ratio: Optional[tuple[float, float]] = None
     embedded_captions: list[dict] = []
     proxy_path: Optional[str] = None
     format_name: Optional[str] = None
@@ -147,7 +148,8 @@ def ingest_media(
         audio_codec=probe.get("audio_codec"),
         audio_sample_rate=probe.get("audio_sample_rate"),
         audio_channels=probe.get("audio_channels"),
-        audio_language=None,
+        audio_language=probe.get("audio_language"),
+        pixel_aspect_ratio=probe.get("pixel_aspect_ratio"),
         embedded_captions=captions,
         proxy_path=proxy_path,
         format_name=probe.get("format_name"),
@@ -198,6 +200,7 @@ def ingest_and_update_project(
     project.video.audio_channels = result.audio_channels
     project.video.source_hash = result.source_hash
     project.video.language = result.audio_language
+    project.video.pixel_aspect_ratio = result.pixel_aspect_ratio
     project.video.proxy_path = result.proxy_path
 
     project.modified_at = datetime.now(timezone.utc).isoformat()
