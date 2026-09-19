@@ -89,10 +89,30 @@ def parse_probe_data(data: dict) -> dict:
     audio_codec = audio_stream.get("codec_name") if audio_stream else None
     sample_rate = int(audio_stream.get("sample_rate", 0)) if audio_stream else None
     audio_channels = int(audio_stream.get("channels", 0)) if audio_stream else None
+    audio_language = (
+        audio_stream.get("tags", {}).get("language")
+        if audio_stream
+        else None
+    )
 
     # Duration
     duration_str = format_data.get("duration") or video_stream.get("duration")
     duration = float(duration_str) if duration_str else 0.0
+
+    # Pixel aspect ratio (ffprobe uses "W:H" format, e.g., "1:1")
+    pixel_aspect_ratio = None
+    if video_stream:
+        sar = video_stream.get("sample_aspect_ratio", "1:1")
+        if ":" in sar:
+            num, den = sar.split(":")
+            den_val = float(den) if float(den) != 0 else 1.0
+            if den_val != 0:
+                pixel_aspect_ratio = (float(num) / den_val, 1.0)
+        elif "/" in sar:
+            num, den = sar.split("/")
+            den_val = float(den) if float(den) != 0 else 1.0
+            if den_val != 0:
+                pixel_aspect_ratio = (float(num) / den_val, 1.0)
 
     return {
         "width": width,
@@ -103,6 +123,8 @@ def parse_probe_data(data: dict) -> dict:
         "audio_codec": audio_codec,
         "audio_sample_rate": sample_rate,
         "audio_channels": audio_channels,
+        "audio_language": audio_language,
+        "pixel_aspect_ratio": pixel_aspect_ratio,
         "format_name": format_data.get("format_name"),
         "bit_rate": format_data.get("bit_rate"),
     }
