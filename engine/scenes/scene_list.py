@@ -10,8 +10,9 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
+from engine.core.pipeline import PipelineStage, Pipeline
 from engine.scenes.chunking import (
     ChunkConfig,
     DEFAULT_CHUNK_DURATION,
@@ -27,6 +28,138 @@ DEFAULT_SCENE_GAP = 5.0  # seconds
 # Default minimum scene duration
 MIN_SCENE_DURATION = 3.0
 
+
+# ─── Pipeline Stages ────────────────────────────────────────────────
+
+class ShotDetectionStage(PipelineStage):
+    """Detect shot boundaries in a video."""
+
+    name = "shot_detection"
+
+    def __init__(self, threshold: float = 0.3, min_shot_duration: float = 0.5) -> None:
+        self.threshold = threshold
+        self.min_shot_duration = min_shot_duration
+
+    def execute(self, input_data: Any) -> list[ShotBoundary]:
+        source_path = input_data
+        return detect_shots(
+            source_path,
+            threshold=self.threshold,
+            min_shot_duration=self.min_shot_duration,
+        )
+
+    def configure(self, **kwargs: Any) -> None:
+        if "threshold" in kwargs:
+            self.threshold = kwargs["threshold"]
+        if "min_shot_duration" in kwargs:
+            self.min_shot_duration = kwargs["min_shot_duration"]
+
+
+class SceneGroupingStage(PipelineStage):
+    """Group shot boundaries into scenes."""
+
+    name = "scene_grouping"
+
+    def __init__(self, gap: float = DEFAULT_SCENE_GAP) -> None:
+        self.gap = gap
+
+    def execute(self, input_data: Any) -> list[Scene]:
+        shot_boundaries = input_data
+        return shots_to_scenes(shot_boundaries, gap=self.gap)
+
+    def configure(self, **kwargs: Any) -> None:
+        if "gap" in kwargs:
+            self.gap = kwargs["gap"]
+
+
+class ChunkingStage(PipelineStage):
+    """Generate chunks from scene list and video duration."""
+
+    name = "chunking"
+
+    def __init__(self, chunk_duration: float = DEFAULT_CHUNK_DURATION) -> None:
+        self.chunk_duration = chunk_duration
+        self._total_duration: Optional[float] = None
+
+    def execute(self, input_data: Any) -> list[Any]:
+        scenes = input_data
+        total_duration = self._total_duration or (
+            scenes[-1].end if scenes else 0.0
+        )
+        config = ChunkConfig(chunk_duration=self.chunk_duration)
+        return generate_chunks(total_duration, config)
+
+    def configure(self, **kwargs: Any) -> None:
+        if "chunk_duration" in kwargs:
+            self.chunk_duration = kwargs["chunk_duration"]
+        if "total_duration" in kwargs:
+            self._total_duration = kwargs["total_duration"]
+
+
+# ─── Pipeline ────────────────────────────────────────────────────────
+
+class SceneListPipeline(Pipeline):
+    """Pipeline that orchestrates shot detection → scenes → chunks."""
+
+    def __init__(
+        self,
+        threshold: float = 0.3,
+        min_shot_duration: float = 0.5,
+        scene_gap: float = DEFAULT_SCENE_GAP,
+        chunk_duration: float = DEFAULT_CHUNK_DURATION,
+    ) -> None:
+        super().__init__()
+        self.threshold = threshold
+        self.min_shot_duration = min_shot_duration
+        self.scene_gap = scene_gap
+        self.chunk_duration = chunk_duration
+        self._setup_stages()
+
+    def _setup_stages(self) -> None:
+        self.add_stage(ShotDetectionStage(self.threshold, self.min_shot_duration))
+        self.add_stage(SceneGroupingStage(self.scene_gap))
+        self.add_stage(ChunkingStage(self.chunk_duration))
+
+    def run(self, source_path: str | Path) -> dict:
+        """Run the full scene list pipeline.
+
+        Args:
+            source_path: Path to source video.
+
+        Returns:
+            Dict with 'shots', 'scenes', 'chunks', and metadata.
+        """
+        # Run shot detection and scene grouping sequentially (grouping depends on shots)
+        shots = self.stages[0].execute(source_path)
+        scenes = self.stages[1].execute(shots)
+
+        # Get total duration from probe or scenes
+        from engine.media.probe import probe_video
+        try:
+            info = probe_video(source_path)
+            total_duration = info.get("duration", scenes[-1].end if scenes else 0)
+        except Exception:
+            total_duration = scenes[-1].end if scenes else 0
+
+        # Configure chunking stage with duration and run
+        self.stages[2].configure(total_duration=total_duration)
+        chunks = self.stages[2].execute(scenes)
+
+        return {
+            "shots": [s.to_dict() if hasattr(s, "to_dict") else {
+                "time_sec": s.time_sec,
+                "confidence": s.confidence,
+            } for s in shots],
+            "scenes": [sc.to_dict() for sc in scenes],
+            "chunks": [c.to_dict() for c in chunks],
+            "total_duration": total_duration,
+            "shot_count": len(shots),
+            "scene_count": len(scenes),
+            "chunk_count": len(chunks),
+        }
+
+
+# ─── Public API ──────────────────────────────────────────────────────
 
 def build_scene_list(
     source_path: str | Path,
@@ -47,40 +180,13 @@ def build_scene_list(
     Returns:
         Dict with 'scenes', 'shots', and 'chunks' keys.
     """
-    # 1. Detect shots
-    shots = detect_shots(
-        source_path,
+    pipeline = SceneListPipeline(
         threshold=shot_threshold,
         min_shot_duration=min_shot_duration,
+        scene_gap=scene_gap,
+        chunk_duration=chunk_duration,
     )
-
-    # 2. Convert shots to scene segments
-    scenes = shots_to_scenes(shots, scene_gap)
-
-    # 3. Get video duration from probe (use last scene end)
-    from engine.media.probe import probe_video
-    try:
-        info = probe_video(source_path)
-        total_duration = info.get("duration", scenes[-1].end if scenes else 0)
-    except Exception:
-        total_duration = scenes[-1].end if scenes else 0
-
-    # 4. Generate chunks
-    config = ChunkConfig(chunk_duration=chunk_duration)
-    chunks = generate_chunks(total_duration, config)
-
-    return {
-        "shots": [s.to_dict() if hasattr(s, "to_dict") else {
-            "time_sec": s.time_sec,
-            "confidence": s.confidence,
-        } for s in shots],
-        "scenes": [sc.to_dict() for sc in scenes],
-        "chunks": [c.to_dict() for c in chunks],
-        "total_duration": total_duration,
-        "shot_count": len(shots),
-        "scene_count": len(scenes),
-        "chunk_count": len(chunks),
-    }
+    return pipeline.run(source_path)
 
 
 def shots_to_scenes(

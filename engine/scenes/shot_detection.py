@@ -8,15 +8,16 @@ from __future__ import annotations
 
 import json
 import logging
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from engine.core.ffmpeg import run_ffmpeg
+
 logger = logging.getLogger("caption_with_intention")
 
 
-@dataclass
+@dataclass(slots=True)
 class ShotBoundary:
     """A detected shot transition point."""
 
@@ -70,18 +71,7 @@ def detect_shots(
         "-",
     ]
 
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
-    except subprocess.TimeoutExpired:
-        raise RuntimeError(
-            f"FFmpeg shot detection timed out on: {source}"
-        )
-
+    result = run_ffmpeg(cmd, timeout=600)
     boundaries = _parse_shot_output(result.stderr, source)
 
     # Filter boundaries that are too close together
@@ -202,10 +192,8 @@ def detect_shots_via_keyframes(
     ]
 
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=30
-        )
-    except subprocess.TimeoutExpired:
+        result = run_ffmpeg(cmd, timeout=30)
+    except RuntimeError:
         return []
 
     if result.returncode != 0:

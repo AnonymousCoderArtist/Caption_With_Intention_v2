@@ -13,6 +13,7 @@ Design:
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 from dataclasses import dataclass, field
@@ -23,7 +24,7 @@ from typing import Any, Optional
 logger = logging.getLogger("caption_with_intention")
 
 
-@dataclass
+@dataclass(slots=True)
 class StageCheckpoint:
     """Checkpoint for a single pipeline stage within a chunk."""
 
@@ -37,7 +38,7 @@ class StageCheckpoint:
     metadata: dict = field(default_factory=dict)
 
 
-@dataclass
+@dataclass(slots=True)
 class ChunkCheckpoint:
     """Checkpoint for a single chunk containing all stage results."""
 
@@ -57,12 +58,12 @@ class ChunkCheckpoint:
             "start": self.start,
             "end": self.end,
             "status": self.status,
-            "stages": [s.__dict__ for s in self.stages],
+            "stages": [s.__dict__ if hasattr(s, "__dict__") else dataclasses.asdict(s) for s in self.stages],
             "output_files": self.output_files,
         }
 
 
-@dataclass
+@dataclass(slots=True)
 class MasterCheckpoint:
     """Master checkpoint for the entire video analysis pipeline."""
 
