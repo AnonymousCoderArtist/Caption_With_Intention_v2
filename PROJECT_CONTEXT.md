@@ -170,6 +170,12 @@ engine.typography.mapping   ← engine.rules.profile_loader
 engine.audio_analysis.basic ← numpy only
 ```
 
+## Speaker/Character Design Decision
+Speaker diarization is PRIMARY — speech comes from humans, so diarization should drive speaker identification.
+Face/video tracking is a FALLBACK only when diarization confidence is low.
+Character avatars can be anything (cartoon faces, dinosaurs, custom avatars) — not limited to real human faces.
+This means: diarization → confidence check → face tracking only as fallback.
+
 ## Design Decisions
 1. Design constants in `design_systems/` JSON, loaded via profile_loader — never hard-coded
 2. Checkpoints are JSON files (human-readable)
@@ -181,6 +187,7 @@ engine.audio_analysis.basic ← numpy only
 8. Structured JSON logging with stage context
 9. Pydantic v2 for data models
 10. `ProjectEngine.__init__` calls `setup_logging()` at import (side effect — note for refactoring)
+11. Speaker diarization is PRIMARY (speech comes from humans); face/video tracking is FALLBACK only when confidence is low; character models can be any avatar
 
 ## Key Patterns for Optimization
 - **Plugin/Registry**: `engine.core.registry` — `__init_subclass__` auto-registration
@@ -192,15 +199,15 @@ engine.audio_analysis.basic ← numpy only
 - **Lazy loading**: generator versions of chunk generation
 
 ## Empty Directories (Intended Purpose)
-- engine/active_speaker/ — Active speaker tracking (M3+)
+- engine/active_speaker/ — Active speaker tracking (M3+): Speaker diarization is PRIMARY (speech comes from humans). Face tracking is FALLBACK only when diarization confidence is low. Character models can be cartoon faces, dinosaurs, or any avatar — not limited to real faces.
 - engine/alignment/ — Caption-to-audio alignment (M3+)
 - engine/animation/ — Caption animation (M3+)
 - engine/asr/ — Automatic speech recognition (M3+)
 - engine/caption_generation/ — Caption generation pipeline (M3+)
-- engine/diarization/ — Speaker diarization (M3+)
+- engine/diarization/ — Speaker diarization (M3+): PRIMARY speaker identification
 - engine/exporters/ — Export formats (M3+)
 - engine/validation/ — Validation rules (M3+)
-- engine/face_tracking/ — Face tracking (M3+)
+- engine/face_tracking/ — Face tracking (M3+): FALLBACK when diarization confidence is low
 - engine/music/ — Music analysis (M3+)
 - engine/sound_events/ — Sound event detection (M3+)
 - apps/cli/ — CLI application
