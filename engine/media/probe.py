@@ -6,6 +6,7 @@ Reads media metadata WITHOUT loading the full file into memory.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import hashlib
 from pathlib import Path
@@ -13,11 +14,18 @@ from typing import Optional
 
 import logging
 
+from engine.core.cache import MemoryCache
+
 logger = logging.getLogger("caption_with_intention")
+
+_probe_cache = MemoryCache()
 
 
 def probe_video(path: str | Path) -> dict:
     """Probe a video file using ffprobe (part of FFmpeg).
+
+    Results are cached per filepath; cache is invalidated when
+    the file's mtime changes.
 
     Args:
         path: Path to video file.
@@ -32,6 +40,15 @@ def probe_video(path: str | Path) -> dict:
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Video file not found: {path}")
+
+    cache_key = str(path.resolve())
+    current_mtime = path.stat().st_mtime
+
+    cached_result = _probe_cache.get(cache_key)
+    if cached_result is not None:
+        cached_mtime = cached_result.get("_mtime", 0)
+        if cached_mtime == current_mtime:
+            return {k: v for k, v in cached_result.items() if k != "_mtime"}
 
     cmd = [
         "ffprobe",
@@ -56,7 +73,11 @@ def probe_video(path: str | Path) -> dict:
     except json.JSONDecodeError as e:
         raise RuntimeError(f"ffprobe returned invalid JSON: {e}")
 
-    return parse_probe_data(data)
+    parsed = parse_probe_data(data)
+    parsed["_mtime"] = current_mtime
+    _probe_cache.set(cache_key, parsed)
+
+    return {k: v for k, v in parsed.items() if k != "_mtime"}
 
 
 def parse_probe_data(data: dict) -> dict:

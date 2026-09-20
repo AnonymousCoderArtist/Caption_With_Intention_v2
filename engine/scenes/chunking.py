@@ -38,7 +38,7 @@ class Chunk(BaseModel):
     overlap_end: float = 0.0    # Where overlap ends
     notes: str = ""
 
-    model_config = {"populate_by_name": True}
+    model_config = {"populate_by_name": True, "slots": True}
 
     @property
     def duration(self) -> float:
@@ -68,6 +68,8 @@ class ChunkConfig(BaseModel):
     overlap_duration: float = DEFAULT_OVERLAP_DURATION
     min_chunk_duration: float = MIN_CHUNK_DURATION
     max_chunk_duration: float = MAX_CHUNK_DURATION
+
+    model_config = {"populate_by_name": True, "slots": True}
 
     @model_validator(mode="after")
     def validate_durations(self) -> "ChunkConfig":
@@ -109,6 +111,84 @@ class ChunkConfig(BaseModel):
             )
 
 
+def generate_chunks_lazy(
+    total_duration: float,
+    config: Optional[ChunkConfig] = None,
+):
+    """Generate chunks lazily as a generator.
+
+    Args:
+        total_duration: Total video duration in seconds.
+        config: Chunk configuration. Uses defaults if None.
+
+    Yields:
+        Chunk objects covering the entire video.
+    """
+    if config is None:
+        config = ChunkConfig()
+
+    config.validate(total_duration)
+
+    # If video is shorter than chunk duration, single chunk
+    if total_duration <= config.chunk_duration:
+        chunk = Chunk(
+            index=0,
+            start=0.0,
+            end=total_duration,
+            overlap_start=0.0,
+            overlap_end=0.0,
+        )
+        logger.info(
+            "Generated 1 chunk for %.1fs (single chunk)", total_duration,
+            extra={"stage": "chunking"},
+        )
+        yield chunk
+        return
+
+    chunk_duration = config.chunk_duration
+    overlap = config.overlap_duration
+    effective_chunk = chunk_duration - overlap  # Non-overlapping portion
+
+    index = 0
+    current_start = 0.0
+
+    while current_start < total_duration:
+        current_end = min(current_start + chunk_duration, total_duration)
+        overlap_start = max(0.0, current_start)
+        overlap_end = min(current_start + overlap, total_duration)
+
+        chunk = Chunk(
+            index=index,
+            start=current_start,
+            end=current_end,
+            overlap_start=overlap_start,
+            overlap_end=overlap_end,
+        )
+        logger.debug(
+            "Chunk %d: %.3fs - %.3fs (overlap: %.3fs - %.3fs)",
+            index,
+            current_start,
+            current_end,
+            overlap_start,
+            overlap_end,
+            extra={"stage": "chunking"},
+        )
+        yield chunk
+
+        index += 1
+        current_start += effective_chunk
+
+        # Safety: avoid infinite loop
+        if current_start >= total_duration - 0.001:
+            break
+
+    logger.info(
+        "Generated chunks for %.1fs video",
+        total_duration,
+        extra={"stage": "chunking"},
+    )
+
+
 def generate_chunks(
     total_duration: float,
     config: Optional[ChunkConfig] = None,
@@ -127,71 +207,7 @@ def generate_chunks(
 
     config.validate(total_duration)
 
-    chunks: list[Chunk] = []
-
-    # If video is shorter than chunk duration, single chunk
-    if total_duration <= config.chunk_duration:
-        chunks.append(
-            Chunk(
-                index=0,
-                start=0.0,
-                end=total_duration,
-                overlap_start=0.0,
-                overlap_end=0.0,
-            )
-        )
-        logger.info(
-            "Generated 1 chunk for %.1fs (single chunk)", total_duration,
-            extra={"stage": "chunking"},
-        )
-        return chunks
-
-    chunk_duration = config.chunk_duration
-    overlap = config.overlap_duration
-    effective_chunk = chunk_duration - overlap  # Non-overlapping portion
-
-    index = 0
-    current_start = 0.0
-
-    while current_start < total_duration:
-        current_end = min(current_start + chunk_duration, total_duration)
-        overlap_start = max(0.0, current_start)
-        overlap_end = min(current_start + overlap, total_duration)
-
-        # For the last chunk, overlap_end should be at start of previous chunk's overlap
-        chunk = Chunk(
-            index=index,
-            start=current_start,
-            end=current_end,
-            overlap_start=overlap_start,
-            overlap_end=overlap_end,
-        )
-        chunks.append(chunk)
-        logger.debug(
-            "Chunk %d: %.3fs - %.3fs (overlap: %.3fs - %.3fs)",
-            index,
-            current_start,
-            current_end,
-            overlap_start,
-            overlap_end,
-            extra={"stage": "chunking"},
-        )
-
-        index += 1
-        current_start += effective_chunk
-
-        # Safety: avoid infinite loop
-        if current_start >= total_duration - 0.001:
-            break
-
-    logger.info(
-        "Generated %d chunks for %.1fs video",
-        len(chunks),
-        total_duration,
-        extra={"stage": "chunking"},
-    )
-
-    return chunks
+    return list(generate_chunks_lazy(total_duration, config))
 
 
 def get_chunk_overlap_regions(
