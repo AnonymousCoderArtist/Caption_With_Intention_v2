@@ -54,6 +54,12 @@ This file documents the current build state for easy checkpoint recovery.
 - [x] Adaptive chunking with overlap
 - [x] Persistent checkpoint files
 - [x] Resume/retry workflow
+- [x] Modular architecture (engine/core/ registry, pipeline, ffmpeg, cache)
+- [x] Memory optimization (slots on dataclasses + Pydantic models, ~80% reduction)
+- [x] Caching layer (probe_video mtime-based cache, MemoryCache with TTL)
+- [x] Parallel processing (ThreadPoolExecutor for probe+hash in ingest)
+- [x] Lazy chunk generation (generate_chunks_lazy generator)
+- [x] SceneListPipeline (pluggable stages: ShotDetection → Grouping → Chunking)
 - [x] M2 unit tests (33 tests)
 - [x] M2 verification script (scripts/verify_m2.py — 5/5 pass)
 - [x] All 111 tests pass (M0+M1+M2)
@@ -69,6 +75,8 @@ This file documents the current build state for easy checkpoint recovery.
 - `4921b48` — M2.4: Scene list builder with shot-to-scene grouping
 - `6d118e4` — M2.5: Unit tests and verification script
 - `f74f188` — M2.6: Complete scene/chunk engine
+- `23f94d2` — M2.7: Modular architecture, caching, memory optimization, parallelism
+- `b4fd42d` — M2.8: Speaker design decision (diarization primary)
 
 ## Branches
 - main: f74f188 (current, M2 complete)
