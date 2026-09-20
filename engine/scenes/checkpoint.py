@@ -111,6 +111,7 @@ class CheckpointEngine:
         project_path: str,
         total_duration: float,
         pipeline_stages: list[str],
+        total_chunks: int = 0,
     ) -> MasterCheckpoint:
         """Create a new master checkpoint for a pipeline run."""
         now = datetime.now(timezone.utc).isoformat()
@@ -121,7 +122,7 @@ class CheckpointEngine:
             pipeline_stages=pipeline_stages,
             created_at=now,
             updated_at=now,
-            total_chunks=0,
+            total_chunks=total_chunks,
         )
         self._save_master()
         logger.info(
@@ -142,6 +143,7 @@ class CheckpointEngine:
             self._master = MasterCheckpoint(
                 project_path=data.get("project_path", ""),
                 total_duration=data.get("total_duration", 0.0),
+                total_chunks=data.get("total_chunks", 0),
                 pipeline_stages=data.get("pipeline_stages", []),
                 completed_chunks=data.get("completed_chunks", []),
                 failed_chunks=data.get("failed_chunks", []),
@@ -344,6 +346,13 @@ class CheckpointEngine:
             self._master.failed_chunks.append(chunk_index)
         self.update_master()
 
+    def set_total_chunks(self, total_chunks: int) -> None:
+        """Set total chunk count after chunk generation."""
+        if self._master is None:
+            return
+        self._master.total_chunks = total_chunks
+        self.update_master()
+
     # ── Internal ───────────────────────────────────────────────────
 
     def _chunk_path(self, chunk_index: int) -> Path:
@@ -356,6 +365,7 @@ class CheckpointEngine:
             "version": CHECKPOINT_VERSION,
             "project_path": self._master.project_path,
             "total_duration": self._master.total_duration,
+            "total_chunks": self._master.total_chunks,
             "pipeline_stages": self._master.pipeline_stages,
             "completed_chunks": self._master.completed_chunks,
             "failed_chunks": self._master.failed_chunks,

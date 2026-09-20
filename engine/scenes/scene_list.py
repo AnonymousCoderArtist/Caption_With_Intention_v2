@@ -12,9 +12,13 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from engine.scenes.chunking import ChunkConfig, generate_chunks
-from engine.scenes.models import Scene, SceneType, Shot, ShotBoundary
-from engine.scenes.shot_detection import detect_shots
+from engine.scenes.chunking import (
+    ChunkConfig,
+    DEFAULT_CHUNK_DURATION,
+    generate_chunks,
+)
+from engine.scenes.models import Scene, SceneType, Shot
+from engine.scenes.shot_detection import detect_shots, ShotBoundary
 
 logger = logging.getLogger("caption_with_intention")
 
@@ -29,7 +33,7 @@ def build_scene_list(
     shot_threshold: float = 0.3,
     min_shot_duration: float = 0.5,
     scene_gap: float = DEFAULT_SCENE_GAP,
-    chunk_duration: float = ChunkConfig.chunk_duration,  # type: ignore[assignment]
+    chunk_duration: float = DEFAULT_CHUNK_DURATION,
 ) -> dict:
     """Full pipeline: detect shots → build scenes → generate chunks.
 
@@ -99,67 +103,50 @@ def shots_to_scenes(
         return []
 
     scenes: list[Scene] = []
-    current_scene_shots: list[Shot] = []
     scene_start = 0.0
+    scene_shots: list[Shot] = []
 
-    # Add a synthetic "end of video" boundary
-    # Use a reasonable end if we can't detect it
-    last_time = shot_boundaries[-1].time_sec
-    # We'll estimate end as some time after last shot
+    # First shot: 0 to first boundary
+    first = shot_boundaries[0]
+    scene_shots.append(
+        Shot(id="shot_0", start=0.0, end=first.time_sec)
+    )
 
-    for i, boundary in enumerate(shot_boundaries):
-        if i == 0:
-            # First shot starts at 0
-            current_scene_shots.append(
-                Shot(
-                    id=f"shot_000",
-                    start=0.0,
-                    end=boundary.time_sec,
-                )
-            )
-            scene_start = 0.0
-            continue
-
-        gap_duration = boundary.time_sec - shot_boundaries[i - 1].time_sec
+    for i in range(1, len(shot_boundaries)):
+        prev_time = shot_boundaries[i - 1].time_sec
+        curr_time = shot_boundaries[i].time_sec
+        gap_duration = curr_time - prev_time
 
         if gap_duration > gap:
-            # End current scene and start new one
-            end_time = shot_boundaries[i - 1].time_sec
+            # End current scene at previous boundary
             scene = _create_scene(
-                scenes,
-                scene_start,
-                end_time,
-                current_scene_shots,
+                scenes, scene_start, prev_time, scene_shots
             )
             scenes.append(scene)
-
-            # Start new scene
-            current_scene_shots = [
-                Shot(
-                    id=f"shot_{len(scenes) * 1000}",
-                    start=end_time,
-                    end=boundary.time_sec,
-                )
-            ]
-            scene_start = end_time
+            # Start new scene at current boundary
+            scene_start = curr_time
+            scene_shots = []
         else:
-            # Same scene — add shot
-            current_scene_shots.append(
+            # Same scene — add shot from prev to current boundary
+            scene_shots.append(
                 Shot(
-                    id=f"shot_{len(current_scene_shots)}",
-                    start=shot_boundaries[i - 1].time_sec,
-                    end=boundary.time_sec,
+                    id=f"shot_{i}",
+                    start=prev_time,
+                    end=curr_time,
                 )
             )
 
-    # Handle last scene (up to end of video or last shot + buffer)
-    if current_scene_shots:
-        last_shot_end = current_scene_shots[-1].end
+    # Flush remaining shots or create empty scene at last boundary
+    if scene_shots:
+        last_end = scene_shots[-1].end
         scene = _create_scene(
-            scenes,
-            scene_start,
-            last_shot_end,
-            current_scene_shots,
+            scenes, scene_start, last_end, scene_shots
+        )
+        scenes.append(scene)
+    elif scene_start > 0 or len(scenes) == 0:
+        # Last boundary started a scene with no subsequent shot
+        scene = _create_scene(
+            scenes, scene_start, scene_start, []
         )
         scenes.append(scene)
 

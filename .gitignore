@@ -38,3 +38,9 @@ htmlcov/
 # Temp
 tmp/
 temp/
+
+# Generated
+proxy.mp4
+
+# Vtx goals
+.vtx/goals/

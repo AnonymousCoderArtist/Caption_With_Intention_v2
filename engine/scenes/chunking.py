@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
+from pydantic import BaseModel, Field, model_validator
 
 logger = logging.getLogger("caption_with_intention")
 
@@ -27,8 +28,7 @@ MIN_CHUNK_DURATION = 30  # 30 seconds minimum
 MAX_CHUNK_DURATION = 600  # 10 minutes maximum
 
 
-@dataclass
-class Chunk:
+class Chunk(BaseModel):
     """A time-bounded segment of a video."""
 
     index: int
@@ -36,30 +36,57 @@ class Chunk:
     end: float
     overlap_start: float = 0.0  # Where overlap begins (for processing)
     overlap_end: float = 0.0    # Where overlap ends
-    duration: float = 0.0       # Non-overlapping duration
     notes: str = ""
 
-    def __post_init__(self) -> None:
-        self.duration = self.end - self.start
-        if self.duration <= 0:
-            raise ValueError(
-                f"Chunk {self.index} has non-positive duration: "
-                f"{self.duration:.3f}s"
-            )
+    model_config = {"populate_by_name": True}
+
+    @property
+    def duration(self) -> float:
+        return self.end - self.start
 
     @property
     def overlap_duration(self) -> float:
         return self.overlap_end - self.overlap_start
 
+    @model_validator(mode="after")
+    def validate_duration(self) -> "Chunk":
+        if self.duration <= 0:
+            raise ValueError(
+                f"Chunk {self.index} has non-positive duration: "
+                f"{self.duration:.3f}s"
+            )
+        return self
 
-@dataclass
-class ChunkConfig:
+    def to_dict(self) -> dict:
+        return self.model_dump()
+
+
+class ChunkConfig(BaseModel):
     """Configuration for chunk generation."""
 
     chunk_duration: float = DEFAULT_CHUNK_DURATION
     overlap_duration: float = DEFAULT_OVERLAP_DURATION
     min_chunk_duration: float = MIN_CHUNK_DURATION
     max_chunk_duration: float = MAX_CHUNK_DURATION
+
+    @model_validator(mode="after")
+    def validate_durations(self) -> "ChunkConfig":
+        if self.chunk_duration < self.min_chunk_duration:
+            raise ValueError(
+                f"Chunk duration {self.chunk_duration}s is below "
+                f"minimum {self.min_chunk_duration}s"
+            )
+        if self.chunk_duration > self.max_chunk_duration:
+            raise ValueError(
+                f"Chunk duration {self.chunk_duration}s exceeds "
+                f"maximum {self.max_chunk_duration}s"
+            )
+        if self.overlap_duration >= self.chunk_duration / 2:
+            raise ValueError(
+                f"Overlap duration {self.overlap_duration}s is too large "
+                f"relative to chunk duration {self.chunk_duration}s"
+            )
+        return self
 
     def validate(self, total_duration: float) -> None:
         """Validate config against video duration."""
