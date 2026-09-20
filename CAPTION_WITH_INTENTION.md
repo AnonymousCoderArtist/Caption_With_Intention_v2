@@ -560,3 +560,14 @@ Access all resources required to implement CWI:
 *Version 1.0 | 2025.1*
 *All Rights Reserved*
 *Developed in partnership with the Chicago Hearing Society*
+
+---
+
+## Automation Engine Architecture
+
+This design system is implemented as an open-source automation engine (see `README.md` for project overview).
+
+### Speaker Design Decision
+Speaker diarization is **PRIMARY** — speech comes from humans, so audio-based speaker identification drives character attribution. Face/video tracking is a **fallback only** when diarization confidence is low. Character models can be any avatar (cartoon faces, dinosaurs, custom avatars).
+
+Pipeline: **diarization → confidence check → face tracking as fallback**
