@@ -191,7 +191,7 @@ This project is the **open-source automation engine** for the Caption With Inten
 | M0 | Project foundation (structure, profiles, core engine) | ✅ Complete |
 | M1 | Media ingest and metadata | ✅ Complete |
 | M2 | Scene/chunk engine + modular architecture + optimization | ✅ Complete |
-| M3 | Caption import/export (SRT/VTT/TTML/ASS) | 🔲 Pending |
+| M3 | Caption import/export + speaker diarization | ✅ Complete |
 | M4 | Deterministic CI renderer | 🔲 Pending |
 | M5–M20 | AI pipeline, editor UI, export, packaging | 🔲 Pending |
 
@@ -286,12 +286,12 @@ Caption_With_Intention_v2/
 │   ├── audio_analysis/           # Loudness, pitch, harmonics
 │   ├── logging/                  # Structured JSON logging
 │   ├── errors/                   # Error classification (13 categories)
-│   ├── active_speaker/           # Active speaker (M3+): diarization PRIMARY
-│   ├── diarization/              # Speaker diarization (M3+): PRIMARY method
+│   ├── active_speaker/           # M3: Active speaker (diarization PRIMARY, face tracking FALLBACK)
+│   ├── diarization/              # M3: Speaker diarization (PRIMARY), pluggable backends
 │   ├── face_tracking/            # Face tracking (M3+): FALLBACK only
 │   ├── asr/                      # Speech recognition (M3+)
 │   ├── renderer/                 # CI visual rendering (M4+)
-│   ├── exporters/                # SRT/VTT/TTML/ASS export (M3+)
+│   ├── exporters/                # M3: SRT/VTT/TTML/ASS export
 │   ├── alignment/                # Caption-to-audio alignment (M3+)
 │   ├── animation/                # Caption animation (M3+)
 │   ├── music/                    # Music analysis (M3+)
@@ -304,7 +304,7 @@ Caption_With_Intention_v2/
 │   ├── inspector/
 │   └── speaker-panel/
 ├── apps/                         # Desktop & CLI apps
-├── tests/                        # Unit, integration, fixture tests (111 passing)
+├── tests/                        # Unit, integration, fixture tests (145 passing)
 ├── docs/                         # Documentation & checkpoints
 ├── scripts/                      # Automation & verification scripts
 ├── design_systems/               # Design system JSON profiles
