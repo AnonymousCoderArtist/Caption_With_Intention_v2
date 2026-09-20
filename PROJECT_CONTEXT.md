@@ -5,21 +5,29 @@ CWI transforms closed captions into an expressive, accessible experience (color 
 
 ## Branch Status
 - **Branch**: `M2-scene-chunk-engine` (current), `master` (up to date)
-- **Milestones**: M0 ✅, M1 ✅, M2 ✅ (111 tests passing)
-- **Next**: M3 — Caption import/export foundation
+- **Milestones**: M0 ✅, M1 ✅, M2 ✅, M3 ✅ (145 tests passing)
+- **Next**: M4 — Deterministic CI renderer
 
 ## Directory Tree
 ```
 engine/
-  core/              ← NEW: registry, pipeline, ffmpeg, cache (to be added)
-  active_speaker/    ← empty (M3+)
-  alignment/         ← empty (M3+)
-  animation/         ← empty (M3+)
-  asr/               ← empty (M3+)
-  caption_generation/ ← empty (M3+)
-  diarization/       ← empty (M3+)
+  core/              ← M2: registry, pipeline, ffmpeg, cache
+  active_speaker/    ← M3: diarization PRIMARY, face tracking fallback
+    active_speaker.py ← ActiveSpeakerTracker class
+  alignment/         ← M3+: caption-to-audio alignment
+  animation/         ← M3+: caption animation
+  asr/               ← M3+: speech recognition
+  caption_generation/ ← M3+: caption generation
+  diarization/       ← M3: speaker diarization (PRIMARY)
+    diarizer.py      ← Diarizer class (pluggable backends: ffmpeg_vad, diarize, pyannote)
+    models.py        ← SpeakerSegment, SpeakerLabel (slots dataclasses)
   errors/            ← CWIError, ErrorCategory (13 categories), ProjectCorruptionError
-  exporters/         ← empty (M3+)
+  exporters/         ← M3: SRT/VTT/TTML/ASS exporters
+    base.py          ← CaptionExporter base (Plugin-registered)
+    srt.py           ← SrtExporter
+    vtt.py           ← VttExporter
+    ass.py           ← AssExporter
+    ttml.py          ← TtmlExporter
   ingest/            ← probe, hash, proxy, full ingest
     ingest.py        ← ingest_media(), ingest_and_update_project(), quick_probe(), MediaIngestResult
     proxy.py         ← generate_proxy(), get_proxy_info(), is_proxy_fresh()
@@ -38,12 +46,13 @@ frontend/            ← React/TS (editor, timeline, preview, inspector, speaker
 apps/cli/            ← empty
 apps/desktop/        ← empty
 tests/
-  unit/              ← 111 tests total
+  unit/              ← 145 tests total
     test_foundation.py (31 tests): colors, typography, project format, schema
     test_ingest.py (24 tests): proxy, ingest, quick probe, real video
     test_probe.py: ffprobe, hash, captions
     test_proxy.py: proxy creation, dimensions, freshness
     test_scenes.py (33 tests): shots, scenes, chunking, checkpoint, pipeline
+    test_diarization.py (32+2 tests): SRT/VTT/TTML/ASS exporters, SpeakerSegment, SpeakerLabel, Diarizer (3 backends), ActiveSpeakerTracker
   integration/       ← empty
   fixtures/          ← empty
   audio/             ← empty
@@ -168,6 +177,14 @@ engine.rules.colors         ← schemas.project, stdlib
 engine.rules.profile_loader ← engine.logging, json
 engine.typography.mapping   ← engine.rules.profile_loader
 engine.audio_analysis.basic ← numpy only
+engine.exporters.base       ← engine.core.registry (Plugin ABC)
+engine.exporters.srt        ← engine.exporters.base
+engine.exporters.vtt        ← engine.exporters.base
+engine.exporters.ass        ← engine.exporters.base
+engine.exporters.ttml       ← engine.exporters.base
+engine.diarization.diarizer ← engine.core.ffmpeg, engine.diarization.models
+engine.diarization.models   ← dataclasses (slots)
+engine.active_speaker.active_speaker ← engine.diarization.diarizer, engine.diarization.models
 ```
 
 ## Speaker/Character Design Decision
@@ -199,13 +216,13 @@ This means: diarization → confidence check → face tracking only as fallback.
 - **Lazy loading**: generator versions of chunk generation
 
 ## Empty Directories (Intended Purpose)
-- engine/active_speaker/ — Active speaker tracking (M3+): Speaker diarization is PRIMARY (speech comes from humans). Face tracking is FALLBACK only when diarization confidence is low. Character models can be cartoon faces, dinosaurs, or any avatar — not limited to real faces.
+- engine/active_speaker/ — **M3 DONE**: Active speaker tracking (diarization PRIMARY, face tracking FALLBACK)
 - engine/alignment/ — Caption-to-audio alignment (M3+)
 - engine/animation/ — Caption animation (M3+)
 - engine/asr/ — Automatic speech recognition (M3+)
 - engine/caption_generation/ — Caption generation pipeline (M3+)
-- engine/diarization/ — Speaker diarization (M3+): PRIMARY speaker identification
-- engine/exporters/ — Export formats (M3+)
+- engine/diarization/ — **M3 DONE**: Speaker diarization (PRIMARY) with pluggable backends
+- engine/exporters/ — **M3 DONE**: SRT/VTT/TTML/ASS export
 - engine/validation/ — Validation rules (M3+)
 - engine/face_tracking/ — Face tracking (M3+): FALLBACK when diarization confidence is low
 - engine/music/ — Music analysis (M3+)
@@ -226,6 +243,7 @@ python -m pytest tests/ -x -q
 python scripts/verify_m0.py
 python scripts/verify_m1.py
 python scripts/verify_m2.py
+python scripts/verify_m3.py
 ```
 
 ## pyproject.toml Key Dependencies

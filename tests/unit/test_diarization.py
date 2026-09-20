@@ -247,6 +247,26 @@ class TestDiarizer:
         diarizer = Diarizer()
         assert diarizer.min_speaker_duration == 0.5
         assert diarizer.min_confidence == 0.5
+        assert diarizer.backend == "ffmpeg_vad"
+
+    def test_diarizer_creation_with_backend(self):
+        """Test diarizer can select different backends."""
+        # Lightweight backend (user downloads model separately)
+        d = Diarizer(backend="diarize")
+        assert d.backend == "diarize"
+
+        # Pyannote backend (needs HF token)
+        d = Diarizer(backend="pyannote")
+        assert d.backend == "pyannote"
+        assert d.token is None
+
+        d = Diarizer(backend="pyannote", token="hf_test_token")
+        assert d.backend == "pyannote"
+        assert d.token == "hf_test_token"
+
+        # Fallback (default)
+        d = Diarizer(backend="ffmpeg_vad")
+        assert d.backend == "ffmpeg_vad"
 
     def test_diarizer_custom_params(self):
         diarizer = Diarizer(
@@ -255,6 +275,13 @@ class TestDiarizer:
         )
         assert diarizer.min_speaker_duration == 1.0
         assert diarizer.min_confidence == 0.8
+
+    def test_diarizer_to_dict_includes_backend(self):
+        diarizer = Diarizer(backend="diarize")
+        d = diarizer.to_dict()
+        assert d["backend"] == "diarize"
+        assert d["min_speaker_duration"] == 0.5
+        assert "segments" in d
 
     def test_diarizer_run_fallback(self, tmp_path):
         """Test diarizer runs and returns segments (even if just 1 fallback)."""

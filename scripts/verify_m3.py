@@ -144,6 +144,10 @@ def test_06_diarizer_segments():
             ]
             segments = diarizer.get_segments()
             assert len(segments) == 1
+    # Backend options:
+    #   "ffmpeg_vad" — fallback, always available, no deps
+    #   "diarize"   — ~4.8% DER, CPU-only, Apache 2.0 (pip install diarize)
+    #   "pyannote"  — SOTA, needs HF token (pip install pyannote.audio)
     print("  OK")
 
 
