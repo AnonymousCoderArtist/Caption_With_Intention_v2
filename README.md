@@ -49,6 +49,10 @@ Around the world, **466 million people** live with hearing disabilities. Since t
 
 Developed in partnership with the **Chicago Hearing Society** with community validation from February 2024 to December 2024.
 
+<p align="center">
+  <img src="docs/assets/small/page9.png" alt="Design System Overview" width="600">
+</p>
+
 ---
 
 ## Design System
@@ -66,6 +70,10 @@ Developed in partnership with the **Chicago Hearing Society** with community val
 - **Supporting**: visually distant from main character colors
 - **Off-camera**: same color as speaker + *italic* type
 
+<p align="center">
+  <img src="docs/assets/small/p16.png" alt="Color Selection for Main Characters" width="600">
+</p>
+
 ### Synchronization
 
 | Feature | Description |
@@ -75,6 +83,11 @@ Developed in partnership with the **Chicago Hearing Society** with community val
 | **Pop Motion** | 15% type size pop at each spoken word |
 | **Syllable Variation** | Syllable-level animation when alignment confidence is sufficient |
 
+<p align="center">
+  <img src="docs/assets/small/p27.png" alt="Color Sync Examples" width="600">
+  <img src="docs/assets/small/page10.png" alt="Synchronization Examples" width="600">
+</p>
+
 ### Intonation Mapping
 
 | Voice Property | Typeface Mapping |
@@ -83,6 +96,14 @@ Developed in partnership with the **Chicago Hearing Society** with community val
 | **Pitch** | Weight: 80-160 Hz → heavy; 160-200 Hz → neutral 400; 200+ Hz → light |
 | **Harmonics** | Width: low harmonics → wide; high harmonics → narrow |
 | **Baseline** | 160-200 Hz → Roboto Regular 400 |
+
+<p align="center">
+  <img src="docs/assets/small/p33.png" alt="Roboto Flex Typeface" width="600">
+</p>
+
+<p align="center">
+  <img src="docs/assets/small/page13.png" alt="Intonation Mapping Examples" width="600">
+</p>
 
 ### Caption Box & Work Area
 
@@ -178,6 +199,10 @@ This project is the **open-source automation engine** for the Caption With Inten
 
 ## Architecture
 
+<p align="center">
+  <img src="docs/assets/small/page8.png" alt="Architecture Diagram" width="600">
+</p>
+
 ### Core Infrastructure (`engine/core/`)
 
 | Module | Purpose |
@@ -188,6 +213,10 @@ This project is the **open-source automation engine** for the Caption With Inten
 | `cache.py` | `MemoryCache` (TTL) + `cached()` LRU decorator |
 
 ### Pipeline Stages (`engine/scenes/`)
+
+<p align="center">
+  <img src="docs/assets/small/page4.png" alt="Pipeline Stages" width="600">
+</p>
 
 ```
 SceneListPipeline
@@ -293,7 +322,11 @@ Caption_With_Intention_v2/
 
 <p align="center">
   <img src="docs/assets/small/page1.png" alt="Design System Page 1" width="400">
+</p>
+
+<p align="center">
   <img src="docs/assets/small/page7.png" alt="Design System Page 7" width="400">
+  <img src="docs/assets/small/page15.png" alt="Design System Page 15" width="400">
 </p>
 
 ---
