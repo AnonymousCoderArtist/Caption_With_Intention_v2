@@ -45,6 +45,11 @@ class Scene(BaseModel):
     def duration(self) -> float:
         return self.end - self.start
 
+    def to_dict(self) -> dict:
+        data = self.model_dump()
+        data["duration"] = self.duration
+        return data
+
 
 class SceneList(BaseModel):
     """Ordered list of scenes for a project."""

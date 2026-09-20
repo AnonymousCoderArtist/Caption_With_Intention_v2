@@ -48,7 +48,35 @@ This file documents the current build state for easy checkpoint recovery.
 - main: 57c9394 (current)
 - master: d2bf8be (up to date with origin/master)
 
+## ✅ M2 — Scene/Chunk Engine COMPLETE
+- [x] Shot detection (FFmpeg scene analysis)
+- [x] Scene list (shots → scenes → chunks)
+- [x] Adaptive chunking with overlap
+- [x] Persistent checkpoint files
+- [x] Resume/retry workflow
+- [x] M2 unit tests (33 tests)
+- [x] M2 verification script (scripts/verify_m2.py — 5/5 pass)
+- [x] All 111 tests pass (M0+M1+M2)
+
+## Git Checkpoints
+- `bff7bc6` — baseline project state with spec and font
+- `a4394dd` — M0: Project foundation
+- `d2bf8be` — Merge: master → main (M0 complete)
+- `57c9394` — M1: Media ingest and metadata
+- `73200fe` — M2.1: Scene data models and shot detection
+- `17b0087` — M2.2: Adaptive chunking engine
+- `f44288f` — M2.3: Persistent checkpoint engine
+- `4921b48` — M2.4: Scene list builder with shot-to-scene grouping
+- `6d118e4` — M2.5: Unit tests and verification script
+- `f74f188` — M2.6: Complete scene/chunk engine
+
+## Branches
+- main: f74f188 (current, M2 complete)
+- M2-scene-chunk-engine: same as main (current)
+- master: d2bf8be (up to date with origin/master)
+
 ## ✅ M0 STATUS: DONE
 ## ✅ M1 STATUS: DONE
+## ✅ M2 STATUS: DONE
 
-## Next: M2 — Scene/Chunk Engine (pending user go-ahead)
+## Next: M3 — Caption import/export foundation

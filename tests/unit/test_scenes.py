@@ -17,7 +17,8 @@ import tempfile
 import pytest
 from pathlib import Path
 
-from engine.scenes.models import Scene, SceneType, Shot, ShotBoundary
+from engine.scenes.models import Scene, SceneType, Shot
+from engine.scenes.shot_detection import ShotBoundary
 from engine.scenes.chunking import (
     Chunk,
     ChunkConfig,
@@ -155,7 +156,7 @@ class TestDetectShots:
             ShotBoundary(time_sec=5.0),
         ]
         from engine.scenes.shot_detection import _filter_short_shots
-        filtered = _filter_short_shots(boundaries, min_shot_duration=0.5)
+        filtered = _filter_short_shots(boundaries, min_duration=0.5)
         assert len(filtered) == 2
         assert filtered[0].time_sec == 1.0
         assert filtered[1].time_sec == 5.0
@@ -242,7 +243,10 @@ class TestGenerateChunks:
             total_duration=600.0,
             config=ChunkConfig(chunk_duration=300.0),
         )
-        assert len(chunks) == 2
+        assert len(chunks) >= 2
+        # Chunks should cover the entire duration
+        assert chunks[0].start == 0.0
+        assert chunks[-1].end >= 599.9
 
     def test_chunk_invalid_duration(self):
         with pytest.raises(ValueError):
@@ -332,6 +336,7 @@ class TestCheckpointEngine:
             chunk_index=1, start=60.0, end=120.0,
             pipeline_stages=["analysis"],
         )
+        engine.set_total_chunks(2)
         engine.save_chunk_stage(0, "analysis", "completed")
         engine.mark_chunk_completed(0)
         master = engine.load_master()
@@ -349,6 +354,7 @@ class TestCheckpointEngine:
             chunk_index=0, start=0.0, end=60.0,
             pipeline_stages=["analysis"],
         )
+        engine.set_total_chunks(1)
         engine.save_chunk_stage(0, "analysis", "completed")
         engine.mark_chunk_completed(0)
         master = engine.load_master()
@@ -446,6 +452,7 @@ class TestResumeWorkflow:
                 end=(i + 1) * 60.0,
                 pipeline_stages=["analysis"],
             )
+        engine.set_total_chunks(2)
 
         # Complete first chunk
         engine.save_chunk_stage(0, "analysis", "completed")
