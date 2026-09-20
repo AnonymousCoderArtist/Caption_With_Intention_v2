@@ -12,9 +12,11 @@
 - [The Three Shortcomings](#the-three-shortcomings)
 - [Design System](#design-system)
 - [MVP Automation](#mvp-automation)
+- [Architecture](#architecture)
 - [Project Structure](#project-structure)
 - [Quick Start](#quick-start)
 - [Development](#development)
+- [Speaker Design](#speaker-design)
 - [License](#license)
 
 ---
@@ -88,20 +90,24 @@ This project is the **open-source automation engine** for the Caption With Inten
 ### Architecture
 
 ```
-┌──────────────────────────────────────┐
-│ Desktop UI (React + TypeScript)      │
-└──────────────┬───────────────────────┘
+┌──────────────────────────────────────────┐
+│  Desktop UI (React + TypeScript)         │
+└──────────────┬───────────────────────────┘
                │ IPC / WebChannel
-┌──────────────▼───────────────────────┐
-│ Python Orchestration Layer           │
-├──────┬──────────────┬────────────────┤
-│ FFmpeg│  AI/Signal  │  CI Rules      │
-│ Probe │ Analysis    │ Engine         │
-└──────┴──────────────┴────────────────┘
-               │
-┌──────────────▼───────────────────────┐
-│ Canonical CI Project JSON + SQLite   │
-└──────────────┬───────────────────────┘
+┌──────────────▼───────────────────────────┐
+│  Python Orchestration Layer               │
+├──────────────────────────────────────────┤
+│  engine/core/     │ Engine Infrastructure │
+│  engine/media/    │ Probe & Ingest        │
+│  engine/scenes/   │ Shot Detection &      │
+│                   │ Chunking              │
+│  engine/ingest/   │ Media Ingest          │
+│  engine/project/  │ Project Engine        │
+│  engine/rules/    │ CI Rules              │
+│  engine/typing/   │ Audio → Typography    │
+├──────────────────────────────────────────┤
+│  Canonical CI Project JSON + Cache        │
+└──────────────┬───────────────────────────┘
                │
     ┌──────────┴──────────┐
     │                     │
@@ -123,11 +129,43 @@ This project is the **open-source automation engine** for the Caption With Inten
 | Milestone | Description | Status |
 |-----------|-------------|--------|
 | M0 | Project foundation (structure, profiles, core engine) | ✅ Complete |
-| M1 | Media ingest and metadata | 🔲 Pending |
-| M2 | Scene/chunk engine | 🔲 Pending |
+| M1 | Media ingest and metadata | ✅ Complete |
+| M2 | Scene/chunk engine + modular architecture + optimization | ✅ Complete |
 | M3 | Caption import/export (SRT/VTT/TTML/ASS) | 🔲 Pending |
 | M4 | Deterministic CI renderer | 🔲 Pending |
 | M5–M20 | AI pipeline, editor UI, export, packaging | 🔲 Pending |
+
+---
+
+## Architecture
+
+### Core Infrastructure (`engine/core/`)
+
+| Module | Purpose |
+|--------|---------|
+| `registry.py` | Plugin registry with `__init_subclass__` auto-registration (thread-safe) |
+| `pipeline.py` | `PipelineStage` ABC + `Pipeline` runner (sequential & parallel) |
+| `ffmpeg.py` | Centralized FFmpeg/ffprobe utility with error handling + metadata cache |
+| `cache.py` | `MemoryCache` (TTL) + `cached()` LRU decorator |
+
+### Pipeline Stages (`engine/scenes/`)
+
+```
+SceneListPipeline
+├── ShotDetectionStage    → FFmpeg scene detection
+├── SceneGroupingStage    → Shot boundary → Scene grouping
+└── ChunkingStage         → Adaptive chunk generation
+```
+
+### Performance Optimizations
+
+| Optimization | Impact |
+|-------------|--------|
+| `@dataclass(slots=True)` on dataclasses | ~80% per-instance memory reduction |
+| Pydantic `model_config["slots"]=True` | Reduced model memory |
+| `probe_video()` mtime-based cache | Eliminates redundant ffprobe calls |
+| ThreadPoolExecutor in `ingest_media()` | Parallel probe + hash (I/O concurrent) |
+| `generate_chunks_lazy()` generator | Memory-efficient chunk iteration |
 
 ---
 
@@ -137,6 +175,11 @@ This project is the **open-source automation engine** for the Caption With Inten
 Caption_With_Intention_v2/
 ├── README.md                     # This file
 ├── CAPTION_WITH_INTENTION.md     # Full design system documentation
+├── docs/
+│   ├── assets/                   # Images extracted from design system PDF
+│   │   ├── cover-01.png          # Cover page
+│   │   └── colors-05.png         # Color palette page
+│   └── M0_CHECKPOINT.md          # Milestone documentation
 ├── Caption-With-Intention_Design-System_V1.0.pdf  # Official design system PDF
 ├── CaptionWithIntention_Automation_MVP_Spec.md     # MVP engineering spec
 ├── pyproject.toml                # Python project configuration
@@ -153,30 +196,50 @@ Caption_With_Intention_v2/
 │           ├── music.json
 │           └── sound_effects.json
 ├── engine/                       # Python engine modules
+│   ├── core/                     # Infrastructure (new in M2)
+│   │   ├── registry.py           # Plugin registry
+│   │   ├── pipeline.py           # Pipeline runner
+│   │   ├── ffmpeg.py             # FFmpeg utility + cache
+│   │   └── cache.py              # MemoryCache + LRU decorator
 │   ├── media/                    # FFmpeg probing & ingest
+│   │   └── probe.py              # probe_video(), compute_source_hash()
+│   ├── ingest/                   # Media ingest orchestration
+│   │   ├── ingest.py             # ingest_media(), quick_probe()
+│   │   └── proxy.py              # Proxy video generation
+│   ├── scenes/                   # Shot detection & chunking
+│   │   ├── models.py             # Scene, Shot, SceneType
+│   │   ├── shot_detection.py     # FFmpeg scene detection
+│   │   ├── chunking.py           # Adaptive chunking + lazy generator
+│   │   ├── scene_list.py         # SceneListPipeline + public API
+│   │   └── checkpoint.py         # Persistent checkpoint system
 │   ├── project/                  # Project engine (create/open/save)
 │   ├── rules/                    # Color, palette, profile loaders
 │   ├── typography/               # Audio → typography mapping
 │   ├── audio_analysis/           # Loudness, pitch, harmonics
 │   ├── logging/                  # Structured JSON logging
-│   ├── errors/                   # Error classification
-│   ├── scenes/                   # Shot detection & chunking
-│   ├── asr/                      # Speech recognition
-│   ├── diarization/              # Speaker identification
-│   ├── renderer/                 # CI visual rendering
-│   ├── exporters/                # SRT/VTT/TTML/ASS export
-│   └── ...
-├── schemas/                      # Canonical data model definitions
+│   ├── errors/                   # Error classification (13 categories)
+│   ├── active_speaker/           # Active speaker (M3+): diarization PRIMARY
+│   ├── diarization/              # Speaker diarization (M3+): PRIMARY method
+│   ├── face_tracking/            # Face tracking (M3+): FALLBACK only
+│   ├── asr/                      # Speech recognition (M3+)
+│   ├── renderer/                 # CI visual rendering (M4+)
+│   ├── exporters/                # SRT/VTT/TTML/ASS export (M3+)
+│   ├── alignment/                # Caption-to-audio alignment (M3+)
+│   ├── animation/                # Caption animation (M3+)
+│   ├── music/                    # Music analysis (M3+)
+│   └── sound_events/             # Sound event detection (M3+)
+├── schemas/                      # Canonical data model (Pydantic v2)
 ├── frontend/                     # React + TypeScript UI
 │   ├── editor/
 │   ├── timeline/
 │   ├── preview/
 │   ├── inspector/
-│   └── ...
+│   └── speaker-panel/
 ├── apps/                         # Desktop & CLI apps
-├── tests/                        # Unit, integration, fixture tests
+├── tests/                        # Unit, integration, fixture tests (111 passing)
 ├── docs/                         # Documentation & checkpoints
 ├── scripts/                      # Automation & verification scripts
+├── design_systems/               # Design system JSON profiles
 ├── captions/                     # Caption outputs
 ├── config/                       # Project configuration
 ├── output/                       # Final deliverables
@@ -184,6 +247,18 @@ Caption_With_Intention_v2/
 ├── .gitignore
 └── .venv/                        # Python virtual environment
 ```
+
+---
+
+## Design System Preview
+
+<p align="center">
+  <img src="docs/assets/cover-01.png" alt="Caption With Intention Design System Cover" width="400">
+</p>
+
+<p align="center">
+  <img src="docs/assets/colors-05.png" alt="CWI Color Palette" width="500">
+</p>
 
 ---
 
@@ -216,26 +291,16 @@ uv pip install -e .
 ```bash
 .venv/bin/python -m pytest tests/unit/ -v
 .venv/bin/python -m pytest tests/integration/ -v
+
+# Run verification scripts
+.venv/bin/python scripts/verify_m0.py
+.venv/bin/python scripts/verify_m1.py
+.venv/bin/python scripts/verify_m2.py
 ```
 
 ---
 
 ## Development
-
-### Running the Verification Suite
-
-```bash
-.venv/bin/python scripts/verify_m0.py
-```
-
-This runs all M0 verification checks:
-- Logging system
-- Project create/open/save
-- Color palette assignment and collision validation
-- Typography mapping (volume→size, pitch→weight, harmonics→width)
-- Error classification
-- Schema validation
-- Design system profile loading
 
 ### Code Style
 
@@ -243,15 +308,31 @@ This runs all M0 verification checks:
 - Structured JSON logging via `engine/logging/logger.py`
 - Error handling via `engine/errors/errors.py`
 - Design constants only in `design_systems/caption_with_intention/v1.0/*.json`
+- Plugin/registry pattern for extensibility via `engine/core/registry.py`
+- Pipeline stages via `engine/core/pipeline.py`
 
 ### Commit Convention
 
 - `[M0]` Project foundation milestones
 - `[M1]` Media ingest milestones
-- `[M4]` Renderer milestones
+- `[M2]` Scene/chunk engine + optimization milestones
 - etc.
 
 Each milestone is a checkpoint commit for easy rollback and tracking.
+
+---
+
+## Speaker Design Decision
+
+> **Speaker diarization is PRIMARY.** Speech ultimately comes from humans, so speaker identification should be driven by audio diarization. Face/video tracking is a **fallback only** when diarization confidence is low.
+
+| Priority | Method | Use Case |
+|----------|--------|----------|
+| **Primary** | Speaker diarization | Standard speaker identification from audio |
+| **Fallback** | Face/video tracking | When diarization confidence is low |
+| **Any avatar** | Custom models | Cartoon faces, dinosaurs, custom avatars — not limited to real faces |
+
+This architecture ensures: **diarization → confidence check → face tracking only as fallback**.
 
 ---
 
