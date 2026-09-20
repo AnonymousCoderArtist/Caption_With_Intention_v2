@@ -41,3 +41,9 @@ temp/
 
 # Generated
 proxy.mp4
+
+# Local tools (not committed)
+hackatime_backfill.py
+
+# Goal tracker (not committed)
+.vtx/
