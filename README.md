@@ -6,6 +6,20 @@
 
 ---
 
+## Design System Preview
+
+<p align="center">
+  <img src="docs/assets/small/cover.png" alt="Caption With Intention Design System Cover" width="400">
+</p>
+
+The CWI system specifies 6 main, 12 supporting, and 24 minor character colors — all carefully chosen for visual distinction:
+
+<p align="center">
+  <img src="docs/assets/small/colors.png" alt="CWI Color Palette" width="500">
+</p>
+
+---
+
 ## Table of Contents
 
 - [About](#about)
@@ -275,23 +289,7 @@ Caption_With_Intention_v2/
 
 ---
 
-## Design System Preview
-
-The Caption With Intention design system defines a comprehensive visual language for expressive captions.
-
-<p align="center">
-  <img src="docs/assets/small/cover.png" alt="Caption With Intention Design System Cover" width="400">
-</p>
-
-### Color Palette
-
-The system specifies 6 main, 12 supporting, and 24 minor character colors — all carefully chosen for visual distinction:
-
-<p align="center">
-  <img src="docs/assets/small/colors.png" alt="CWI Color Palette" width="500">
-</p>
-
-### Design System Pages
+## Design System Pages
 
 <p align="center">
   <img src="docs/assets/small/page1.png" alt="Design System Page 1" width="400">
