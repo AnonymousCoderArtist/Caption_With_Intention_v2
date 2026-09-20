@@ -86,5 +86,14 @@ This file documents the current build state for easy checkpoint recovery.
 ## ✅ M0 STATUS: DONE
 ## ✅ M1 STATUS: DONE
 ## ✅ M2 STATUS: DONE
+## ✅ M3 STATUS: DONE — Caption import/export + speaker diarization
 
-## Next: M3 — Caption import/export foundation
+### M3 Completed
+- [x] Caption exporters (SRT, VTT, TTML, ASS) — `engine/exporters/`
+- [x] Caption exporter base (Plugin-registered) — `engine/exporters/base.py`
+- [x] Speaker diarization (PRIMARY) — `engine/diarization/`
+- [x] Active speaker tracker (diarization primary, face tracking fallback) — `engine/active_speaker/`
+- [x] M3 unit tests (32 tests) — `tests/unit/test_diarization.py`
+- [x] M3 verification script — `scripts/verify_m3.py` (7/7 pass)
+
+## Next: M4 — Deterministic CI renderer
