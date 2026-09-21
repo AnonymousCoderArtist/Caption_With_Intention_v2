@@ -6,6 +6,7 @@ single ingest step that populates a project's VideoInfo.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -82,31 +83,33 @@ def ingest_media(
         "Starting media ingest: %s", source, extra={"stage": "media_ingest"}
     )
 
-    # --- Step 1: Probe metadata ---
-    logger.info("Probing video metadata...", extra={"stage": "media_ingest"})
-    try:
-        probe = probe_video(source)
-    except Exception as e:
-        raise CWIError(
-            f"Media probe failed: {e}",
-            category=ErrorCategory.unsupported_codec,
-            recoverable=True,
-            stage="media_ingest",
-            details={"path": str(source)},
-        ) from e
+    # --- Step 1: Probe metadata and hash concurrently ---
+    logger.info("Running probe and hash in parallel...", extra={"stage": "media_ingest"})
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        probe_future = executor.submit(probe_video, source)
+        hash_future = executor.submit(compute_source_hash, source)
 
-    # --- Step 2: Source hash ---
-    logger.info("Computing source integrity hash...", extra={"stage": "media_ingest"})
-    try:
-        source_hash = compute_source_hash(source)
-    except Exception as e:
-        raise CWIError(
-            f"Source hash computation failed: {e}",
-            category=ErrorCategory.fatal,
-            recoverable=False,
-            stage="media_ingest",
-            details={"path": str(source)},
-        ) from e
+        try:
+            probe = probe_future.result()
+        except Exception as e:
+            raise CWIError(
+                f"Media probe failed: {e}",
+                category=ErrorCategory.unsupported_codec,
+                recoverable=True,
+                stage="media_ingest",
+                details={"path": str(source)},
+            ) from e
+
+        try:
+            source_hash = hash_future.result()
+        except Exception as e:
+            raise CWIError(
+                f"Source hash computation failed: {e}",
+                category=ErrorCategory.fatal,
+                recoverable=False,
+                stage="media_ingest",
+                details={"path": str(source)},
+            ) from e
 
     # --- Step 3: Embedded captions ---
     logger.info(
@@ -230,8 +233,11 @@ def quick_probe(source_path: str | Path) -> dict:
     if not source.exists():
         raise FileNotFoundError(f"Source video not found: {source}")
 
-    probe = probe_video(source)
-    source_hash = compute_source_hash(source)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        probe_future = executor.submit(probe_video, source)
+        hash_future = executor.submit(compute_source_hash, source)
+        probe = probe_future.result()
+        source_hash = hash_future.result()
 
     return {
         "source_path": str(source),

@@ -48,7 +48,52 @@ This file documents the current build state for easy checkpoint recovery.
 - main: 57c9394 (current)
 - master: d2bf8be (up to date with origin/master)
 
+## ✅ M2 — Scene/Chunk Engine COMPLETE
+- [x] Shot detection (FFmpeg scene analysis)
+- [x] Scene list (shots → scenes → chunks)
+- [x] Adaptive chunking with overlap
+- [x] Persistent checkpoint files
+- [x] Resume/retry workflow
+- [x] Modular architecture (engine/core/ registry, pipeline, ffmpeg, cache)
+- [x] Memory optimization (slots on dataclasses + Pydantic models, ~80% reduction)
+- [x] Caching layer (probe_video mtime-based cache, MemoryCache with TTL)
+- [x] Parallel processing (ThreadPoolExecutor for probe+hash in ingest)
+- [x] Lazy chunk generation (generate_chunks_lazy generator)
+- [x] SceneListPipeline (pluggable stages: ShotDetection → Grouping → Chunking)
+- [x] M2 unit tests (33 tests)
+- [x] M2 verification script (scripts/verify_m2.py — 5/5 pass)
+- [x] All 111 tests pass (M0+M1+M2)
+
+## Git Checkpoints
+- `bff7bc6` — baseline project state with spec and font
+- `a4394dd` — M0: Project foundation
+- `d2bf8be` — Merge: master → main (M0 complete)
+- `57c9394` — M1: Media ingest and metadata
+- `73200fe` — M2.1: Scene data models and shot detection
+- `17b0087` — M2.2: Adaptive chunking engine
+- `f44288f` — M2.3: Persistent checkpoint engine
+- `4921b48` — M2.4: Scene list builder with shot-to-scene grouping
+- `6d118e4` — M2.5: Unit tests and verification script
+- `f74f188` — M2.6: Complete scene/chunk engine
+- `23f94d2` — M2.7: Modular architecture, caching, memory optimization, parallelism
+- `b4fd42d` — M2.8: Speaker design decision (diarization primary)
+
+## Branches
+- main: f74f188 (current, M2 complete)
+- M2-scene-chunk-engine: same as main (current)
+- master: d2bf8be (up to date with origin/master)
+
 ## ✅ M0 STATUS: DONE
 ## ✅ M1 STATUS: DONE
+## ✅ M2 STATUS: DONE
+## ✅ M3 STATUS: DONE — Caption import/export + speaker diarization
 
-## Next: M2 — Scene/Chunk Engine (pending user go-ahead)
+### M3 Completed
+- [x] Caption exporters (SRT, VTT, TTML, ASS) — `engine/exporters/`
+- [x] Caption exporter base (Plugin-registered) — `engine/exporters/base.py`
+- [x] Speaker diarization (PRIMARY) — `engine/diarization/`
+- [x] Active speaker tracker (diarization primary, face tracking fallback) — `engine/active_speaker/`
+- [x] M3 unit tests (32 tests) — `tests/unit/test_diarization.py`
+- [x] M3 verification script — `scripts/verify_m3.py` (7/7 pass)
+
+## Next: M4 — Deterministic CI renderer
