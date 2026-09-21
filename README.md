@@ -192,7 +192,7 @@ This project is the **open-source automation engine** for the Caption With Inten
 | M1 | Media ingest and metadata | ✅ Complete |
 | M2 | Scene/chunk engine + modular architecture + optimization | ✅ Complete |
 | M3 | Caption import/export + speaker diarization | ✅ Complete |
-| M4 | Deterministic CI renderer | 🔲 Pending |
+| M4 | Deterministic CI renderer | ✅ Complete |
 | M5–M20 | AI pipeline, editor UI, export, packaging | 🔲 Pending |
 
 ---
@@ -290,7 +290,7 @@ Caption_With_Intention_v2/
 │   ├── diarization/              # M3: Speaker diarization (PRIMARY), pluggable backends
 │   ├── face_tracking/            # Face tracking (M3+): FALLBACK only
 │   ├── asr/                      # Speech recognition (M3+)
-│   ├── renderer/                 # CI visual rendering (M4+)
+│   ├── renderer/                 # M4: Deterministic CI renderer
 │   ├── exporters/                # M3: SRT/VTT/TTML/ASS export
 │   ├── alignment/                # Caption-to-audio alignment (M3+)
 │   ├── animation/                # Caption animation (M3+)
