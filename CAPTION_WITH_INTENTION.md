@@ -560,3 +560,44 @@ Access all resources required to implement CWI:
 *Version 1.0 | 2025.1*
 *All Rights Reserved*
 *Developed in partnership with the Chicago Hearing Society*
+
+---
+
+## Automation Engine Architecture
+
+This design system is implemented as an open-source automation engine (see `README.md` for project overview).
+
+### Speaker Design Decision
+Speaker diarization is **PRIMARY** — speech comes from humans, so audio-based speaker identification drives character attribution. Face/video tracking is a **fallback only** when diarization confidence is low. Character models can be any avatar (cartoon faces, dinosaurs, custom avatars).
+
+Pipeline: **diarization → confidence check → face tracking as fallback**
+
+### Diarization Backend Options
+
+The `engine/diarization.Diarizer` supports 3 pluggable backends (select via `backend` parameter):
+
+| Backend | DER (VoxConverse) | Speed | License | Setup |
+|---------|-------------------|-------|---------|-------|
+| **`diarize`** (recommended) | ~4.8% | ~8× realtime (CPU) | Apache 2.0 | `pip install diarize` — user downloads model separately, no API key, no HF account |
+| **`pyannote`** (SOTA) | ~11.2% | GPU fast / CPU slow | CC-BY-4.0 | `pip install pyannote.audio` + HuggingFace token — user downloads models separately |
+| **`ffmpeg_vad`** (fallback) | ~25-30% (est.) | Realtime | N/A | Always available — no extra deps, uses FFmpeg silencedetect |
+
+All backends return `list[SpeakerSegment]` from `run()` — interface is identical regardless of backend.
+
+```python
+from engine.diarization.diarizer import Diarizer
+
+# Recommended: lightweight, accurate, no API key
+diarizer = Diarizer(backend="diarize")
+segments = diarizer.run("audio.wav")
+
+# SOTA: best accuracy, needs HF token + GPU for speed
+diarizer = Diarizer(backend="pyannote", token="hf_xxx")
+segments = diarizer.run("audio.wav")
+
+# Fallback: always works, lower accuracy
+diarizer = Diarizer(backend="ffmpeg_vad")
+segments = diarizer.run("audio.wav")
+```
+
+**Training your own model**: Use `speakerbox` (`pip install speakerbox[example_data]`) to fine-tune on labeled audio: preprocess → clean labels → prepare dataset → `train()`. For lightweight training on CPU, `diarize`'s architecture (Silero VAD + WeSpeaker ResNet34-LM ONNX + GMM BIC + Spectral Clustering) provides a clear upgrade path.

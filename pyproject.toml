@@ -33,6 +33,12 @@ gpu = [
     "torch>=2.0",
     "torchaudio>=2.0",
 ]
+diarize = [
+    "diarize>=3.0",
+]
+diarization = [
+    "pyannote.audio>=3.0",
+]
 
 [tool.setuptools.packages.find]
 include = ["engine.*", "apps.*", "schemas*"]

@@ -1,0 +1,342 @@
+"""Scene list builder — groups shots into scenes, writes scenes.json.
+
+This module bridges shot detection and chunking by converting
+raw shot boundaries into a structured scene list that the
+chunk engine can consume.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from pathlib import Path
+from typing import Any, Optional
+
+from engine.core.pipeline import PipelineStage, Pipeline
+from engine.scenes.chunking import (
+    ChunkConfig,
+    DEFAULT_CHUNK_DURATION,
+    generate_chunks,
+)
+from engine.scenes.models import Scene, SceneType, Shot
+from engine.scenes.shot_detection import detect_shots, ShotBoundary
+
+logger = logging.getLogger("caption_with_intention")
+
+# Default gap between shots before we start a new scene
+DEFAULT_SCENE_GAP = 5.0  # seconds
+# Default minimum scene duration
+MIN_SCENE_DURATION = 3.0
+
+
+# ─── Pipeline Stages ────────────────────────────────────────────────
+
+class ShotDetectionStage(PipelineStage):
+    """Detect shot boundaries in a video."""
+
+    name = "shot_detection"
+
+    def __init__(self, threshold: float = 0.3, min_shot_duration: float = 0.5) -> None:
+        self.threshold = threshold
+        self.min_shot_duration = min_shot_duration
+
+    def execute(self, input_data: Any) -> list[ShotBoundary]:
+        source_path = input_data
+        return detect_shots(
+            source_path,
+            threshold=self.threshold,
+            min_shot_duration=self.min_shot_duration,
+        )
+
+    def configure(self, **kwargs: Any) -> None:
+        if "threshold" in kwargs:
+            self.threshold = kwargs["threshold"]
+        if "min_shot_duration" in kwargs:
+            self.min_shot_duration = kwargs["min_shot_duration"]
+
+
+class SceneGroupingStage(PipelineStage):
+    """Group shot boundaries into scenes."""
+
+    name = "scene_grouping"
+
+    def __init__(self, gap: float = DEFAULT_SCENE_GAP) -> None:
+        self.gap = gap
+
+    def execute(self, input_data: Any) -> list[Scene]:
+        shot_boundaries = input_data
+        return shots_to_scenes(shot_boundaries, gap=self.gap)
+
+    def configure(self, **kwargs: Any) -> None:
+        if "gap" in kwargs:
+            self.gap = kwargs["gap"]
+
+
+class ChunkingStage(PipelineStage):
+    """Generate chunks from scene list and video duration."""
+
+    name = "chunking"
+
+    def __init__(self, chunk_duration: float = DEFAULT_CHUNK_DURATION) -> None:
+        self.chunk_duration = chunk_duration
+        self._total_duration: Optional[float] = None
+
+    def execute(self, input_data: Any) -> list[Any]:
+        scenes = input_data
+        total_duration = self._total_duration or (
+            scenes[-1].end if scenes else 0.0
+        )
+        config = ChunkConfig(chunk_duration=self.chunk_duration)
+        return generate_chunks(total_duration, config)
+
+    def configure(self, **kwargs: Any) -> None:
+        if "chunk_duration" in kwargs:
+            self.chunk_duration = kwargs["chunk_duration"]
+        if "total_duration" in kwargs:
+            self._total_duration = kwargs["total_duration"]
+
+
+# ─── Pipeline ────────────────────────────────────────────────────────
+
+class SceneListPipeline(Pipeline):
+    """Pipeline that orchestrates shot detection → scenes → chunks."""
+
+    def __init__(
+        self,
+        threshold: float = 0.3,
+        min_shot_duration: float = 0.5,
+        scene_gap: float = DEFAULT_SCENE_GAP,
+        chunk_duration: float = DEFAULT_CHUNK_DURATION,
+    ) -> None:
+        super().__init__()
+        self.threshold = threshold
+        self.min_shot_duration = min_shot_duration
+        self.scene_gap = scene_gap
+        self.chunk_duration = chunk_duration
+        self._setup_stages()
+
+    def _setup_stages(self) -> None:
+        self.add_stage(ShotDetectionStage(self.threshold, self.min_shot_duration))
+        self.add_stage(SceneGroupingStage(self.scene_gap))
+        self.add_stage(ChunkingStage(self.chunk_duration))
+
+    def run(self, source_path: str | Path) -> dict:
+        """Run the full scene list pipeline.
+
+        Args:
+            source_path: Path to source video.
+
+        Returns:
+            Dict with 'shots', 'scenes', 'chunks', and metadata.
+        """
+        # Run shot detection and scene grouping sequentially (grouping depends on shots)
+        shots = self.stages[0].execute(source_path)
+        scenes = self.stages[1].execute(shots)
+
+        # Get total duration from probe or scenes
+        from engine.media.probe import probe_video
+        try:
+            info = probe_video(source_path)
+            total_duration = info.get("duration", scenes[-1].end if scenes else 0)
+        except Exception:
+            total_duration = scenes[-1].end if scenes else 0
+
+        # Configure chunking stage with duration and run
+        self.stages[2].configure(total_duration=total_duration)
+        chunks = self.stages[2].execute(scenes)
+
+        return {
+            "shots": [s.to_dict() if hasattr(s, "to_dict") else {
+                "time_sec": s.time_sec,
+                "confidence": s.confidence,
+            } for s in shots],
+            "scenes": [sc.to_dict() for sc in scenes],
+            "chunks": [c.to_dict() for c in chunks],
+            "total_duration": total_duration,
+            "shot_count": len(shots),
+            "scene_count": len(scenes),
+            "chunk_count": len(chunks),
+        }
+
+
+# ─── Public API ──────────────────────────────────────────────────────
+
+def build_scene_list(
+    source_path: str | Path,
+    shot_threshold: float = 0.3,
+    min_shot_duration: float = 0.5,
+    scene_gap: float = DEFAULT_SCENE_GAP,
+    chunk_duration: float = DEFAULT_CHUNK_DURATION,
+) -> dict:
+    """Full pipeline: detect shots → build scenes → generate chunks.
+
+    Args:
+        source_path: Path to source video.
+        shot_threshold: FFmpeg scene detection threshold.
+        min_shot_duration: Minimum time between shot boundaries.
+        scene_gap: Gap between shots that starts a new scene.
+        chunk_duration: Duration per chunk in seconds.
+
+    Returns:
+        Dict with 'scenes', 'shots', and 'chunks' keys.
+    """
+    pipeline = SceneListPipeline(
+        threshold=shot_threshold,
+        min_shot_duration=min_shot_duration,
+        scene_gap=scene_gap,
+        chunk_duration=chunk_duration,
+    )
+    return pipeline.run(source_path)
+
+
+def shots_to_scenes(
+    shot_boundaries: list[ShotBoundary],
+    gap: float = DEFAULT_SCENE_GAP,
+) -> list[Scene]:
+    """Convert shot boundaries into Scene objects.
+
+    Shots within `gap` seconds of each other are considered
+    part of the same scene. Larger gaps start new scenes.
+
+    Args:
+        shot_boundaries: List of detected shot boundaries.
+        gap: Time gap threshold for scene splitting.
+
+    Returns:
+        List of Scene objects with shot assignments.
+    """
+    if not shot_boundaries:
+        return []
+
+    scenes: list[Scene] = []
+    scene_start = 0.0
+    scene_shots: list[Shot] = []
+
+    # First shot: 0 to first boundary
+    first = shot_boundaries[0]
+    scene_shots.append(
+        Shot(id="shot_0", start=0.0, end=first.time_sec)
+    )
+
+    for i in range(1, len(shot_boundaries)):
+        prev_time = shot_boundaries[i - 1].time_sec
+        curr_time = shot_boundaries[i].time_sec
+        gap_duration = curr_time - prev_time
+
+        if gap_duration > gap:
+            # End current scene at previous boundary
+            scene = _create_scene(
+                scenes, scene_start, prev_time, scene_shots
+            )
+            scenes.append(scene)
+            # Start new scene at current boundary
+            scene_start = curr_time
+            scene_shots = []
+        else:
+            # Same scene — add shot from prev to current boundary
+            scene_shots.append(
+                Shot(
+                    id=f"shot_{i}",
+                    start=prev_time,
+                    end=curr_time,
+                )
+            )
+
+    # Flush remaining shots or create empty scene at last boundary
+    if scene_shots:
+        last_end = scene_shots[-1].end
+        scene = _create_scene(
+            scenes, scene_start, last_end, scene_shots
+        )
+        scenes.append(scene)
+    elif scene_start > 0 or len(scenes) == 0:
+        # Last boundary started a scene with no subsequent shot
+        scene = _create_scene(
+            scenes, scene_start, scene_start, []
+        )
+        scenes.append(scene)
+
+    return scenes
+
+
+def _create_scene(
+    existing_scenes: list[Scene],
+    start: float,
+    end: float,
+    shots: list[Shot],
+) -> Scene:
+    """Create a Scene from shot list."""
+    scene_id = f"scene_{len(existing_scenes):03d}"
+    return Scene(
+        id=scene_id,
+        start=start,
+        end=end,
+        scene_type=SceneType.dialogue,
+        shots=shots,
+    )
+
+
+def save_scene_list(
+    scenes: list[Scene],
+    output_path: str | Path,
+    total_duration: float = 0.0,
+) -> None:
+    """Save scene list to a JSON file (scenes.json).
+
+    Args:
+        scenes: List of Scene objects.
+        output_path: Path to output JSON file.
+        total_duration: Total video duration.
+    """
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    data = {
+        "version": "1",
+        "total_duration": total_duration,
+        "scene_count": len(scenes),
+        "scenes": [
+            {
+                "id": scene.id,
+                "start": scene.start,
+                "end": scene.end,
+                "scene_type": scene.scene_type.value
+                if hasattr(scene.scene_type, "value")
+                else str(scene.scene_type),
+                "shot_count": len(scene.shots),
+                "shots": [
+                    {
+                        "id": shot.id,
+                        "start": shot.start,
+                        "end": shot.end,
+                        "shot_type": shot.shot_type,
+                        "is_reaction_shot": shot.is_reaction_shot,
+                    }
+                    for shot in scene.shots
+                ],
+                "dominant_speaker": scene.dominant_speaker,
+                "is_off_camera": scene.is_off_camera,
+                "notes": scene.notes,
+                "override": scene.override,
+            }
+            for scene in scenes
+        ],
+    }
+
+    with open(output, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, default=str)
+
+    logger.info(
+        "Scene list saved: %d scenes → %s",
+        len(scenes),
+        output,
+        extra={"stage": "scene_list"},
+    )
+
+
+def load_scene_list(
+    path: str | Path,
+) -> dict:
+    """Load scene list from a JSON file."""
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
