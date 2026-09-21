@@ -112,11 +112,17 @@ def validate_palette_collision(
     return distance >= min_distance
 
 
+DEFAULT_SPEAKER_COLOR = "#E5E517"
+
+
 def assign_speaker_color(
     speaker: Speaker,
     assigned: dict[str, str] | None = None,
 ) -> str:
     """Assign a color to a speaker based on category.
+
+    Uses speaker's explicit color if set (non-default), otherwise
+    assigns from palette based on category.
 
     Args:
         speaker: Speaker object with category and role.
@@ -132,6 +138,10 @@ def assign_speaker_color(
     for sid, color in assigned.items():
         if sid == speaker.id:
             return color
+
+    # Use speaker's explicit color if set
+    if speaker.color and speaker.color != DEFAULT_SPEAKER_COLOR:
+        return speaker.color
 
     if speaker.category == SpeakerCategory.main:
         # Map main speakers to main palette by index
