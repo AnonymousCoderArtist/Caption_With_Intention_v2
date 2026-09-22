@@ -1,49 +1,17 @@
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.egg-info/
+node_modules/
 dist/
 build/
-.venv/
-venv/
-env/
-
-# IDE
+*.tsbuildinfo
+.DS_Store
+.env
+.env.local
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Project-specific
-logs/
-*.ci
-!.gitkeep
-
-# Testing
+*.log
+__pycache__/
+.venv/
+venv/
+.mypy_cache/
 .pytest_cache/
 .coverage
 htmlcov/
-
-# Environment
-.env
-.env.local
-.env.*.local
-
-# Temp
-tmp/
-temp/
-
-# Generated
-proxy.mp4
-
-# Local tools (not committed)
-hackatime_backfill.py
-
-# Goal tracker (not committed)
-.vtx/

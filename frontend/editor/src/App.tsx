@@ -1,6 +1,6 @@
-import { useState, useCallback, useMemo } from "react";
-import { EditorApiClient, createInProcessTransport } from "@/api/client";
-import type { EditorAPI } from "@/types";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { EditorApiClient } from "@/api/client";
+import type { ApiResponse } from "@/types/project";
 import { SpeakerPanel } from "@/components/SpeakerPanel";
 import { EventList } from "@/components/EventList";
 import { EventEditor } from "@/components/EventEditor";
@@ -9,55 +9,63 @@ import { Timeline } from "@/components/Timeline";
 import { Toolbar } from "@/components/Toolbar";
 import { ProjectSummary } from "@/components/ProjectSummary";
 
-export interface AppProps {
-  editorApi?: EditorAPI;
+function isApiResponse<T>(r: ApiResponse<T> | { success: boolean; data: any }): r is ApiResponse<T> {
+  return "success" in r;
 }
-
-export type { EditorAPI } from "@/types";
 
 type ActivePanel = "events" | "speakers" | "inspector";
 
-export function App({ editorApi: propApi }: AppProps) {
-  const [api] = useState<EditorAPI>(() => propApi ?? createMockApi());
+export function App() {
+  const apiRef = useRef<EditorApiClient | null>(null);
+  if (!apiRef.current) {
+    apiRef.current = new EditorApiClient(async (action, params) => {
+      const query = params ? `?${new URLSearchParams(params).toString()}` : "";
+      const res = await fetch(`/api/${action}${query}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: params ? JSON.stringify(params) : undefined,
+      });
+      return res.json();
+    });
+  }
+  const api = apiRef.current;
+
   const [activePanel, setActivePanel] = useState<ActivePanel>("events");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  const [projectSummary, setProjectSummary] = useState<{ success: boolean; data: Record<string, any> }>({ success: false, data: {} });
 
   const forceRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  const projectSummary = useMemo(
-    () => api.getProjectSummary?.() ?? { success: false, data: {} },
-    [api, refreshKey],
-  );
+  useEffect(() => {
+    setLoading(false);
+    api.getProjectSummary().then((r) => {
+      if (r && typeof r === "object" && "success" in r && r.success) {
+        setProjectSummary(r as { success: boolean; data: Record<string, any> });
+      }
+    });
+  }, [api]);
+
+  if (loading) {
+    return <div className="loading">Loading CWI Editor...</div>;
+  }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100vh",
-        overflow: "hidden",
-      }}
-    >
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
       {/* Header */}
       <header
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "8px 16px",
-          background: "var(--color-bg-secondary)",
-          borderBottom: "1px solid var(--color-border)",
+          padding: "var(--sp-3) var(--sp-5)",
+          background: "linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 100%)",
+          borderBottom: "1px solid var(--border)",
         }}
       >
-        <h1
-          style={{
-            fontSize: "1.2rem",
-            margin: 0,
-            border: "none",
-            padding: 0,
-          }}
-        >
+        <h1 style={{ fontSize: "1.15rem", margin: 0, border: "none", padding: 0, letterSpacing: "-0.01em" }}>
           Caption With Intention
         </h1>
         <ProjectSummary summary={projectSummary.data} />
@@ -66,57 +74,36 @@ export function App({ editorApi: propApi }: AppProps) {
       {/* Toolbar */}
       <Toolbar api={api} onAction={forceRefresh} />
 
-      {/* Main Content — 3-panel layout */}
-      <div
-        style={{
-          display: "flex",
-          flex: 1,
-          overflow: "hidden",
-        }}
-      >
-        {/* Left Sidebar — Speakers & Navigation */}
+      {/* Main Content */}
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+        {/* Left Sidebar */}
         <aside
           style={{
             width: "240px",
             minWidth: "240px",
-            borderRight: "1px solid var(--color-border)",
+            borderRight: "1px solid var(--border)",
             display: "flex",
             flexDirection: "column",
+            background: "var(--bg-1)",
           }}
         >
-          <nav
-            style={{
-              display: "flex",
-              borderBottom: "1px solid var(--color-border)",
-            }}
-          >
-            {([
+          <div className="tab-bar">
+            {[
               { key: "events", label: "Events" },
               { key: "speakers", label: "Speakers" },
               { key: "inspector", label: "Inspector" },
-            ] as { key: ActivePanel; label: string }[]).map((tab) => (
+            ].map((tab) => (
               <button
                 key={tab.key}
-                onClick={() => setActivePanel(tab.key)}
-                style={{
-                  flex: 1,
-                  borderRadius: 0,
-                  borderBottom:
-                    activePanel === tab.key
-                      ? "2px solid var(--color-accent)"
-                      : "2px solid transparent",
-                  background:
-                    activePanel === tab.key
-                      ? "var(--color-bg-tertiary)"
-                      : "transparent",
-                }}
+                className={`tab ${activePanel === tab.key ? "active" : ""}`}
+                onClick={() => setActivePanel(tab.key as ActivePanel)}
               >
                 {tab.label}
               </button>
             ))}
-          </nav>
+          </div>
 
-          <div style={{ flex: 1, overflow: "auto", padding: "var(--spacing-md)" }}>
+          <div style={{ flex: 1, overflow: "auto", padding: "var(--sp-4)" }}>
             {activePanel === "speakers" && (
               <SpeakerPanel api={api} onAction={forceRefresh} key={refreshKey} />
             )}
@@ -138,7 +125,7 @@ export function App({ editorApi: propApi }: AppProps) {
               />
             )}
             {activePanel === "inspector" && !selectedEventId && (
-              <div style={{ color: "var(--color-text-muted)", padding: "var(--spacing-xl)" }}>
+              <div style={{ color: "var(--text-400)", padding: "var(--sp-6)", textAlign: "center" }}>
                 Select an event to inspect its properties.
               </div>
             )}
@@ -146,21 +133,8 @@ export function App({ editorApi: propApi }: AppProps) {
         </aside>
 
         {/* Center — Timeline + Editor */}
-        <main
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              padding: "var(--spacing-md)",
-              overflow: "auto",
-              flex: 1,
-            }}
-          >
+        <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "var(--sp-5)", overflow: "auto", flex: 1 }}>
             <Timeline api={api} onAction={forceRefresh} key={refreshKey} />
 
             {activePanel === "events" && (
@@ -177,21 +151,4 @@ export function App({ editorApi: propApi }: AppProps) {
       </div>
     </div>
   );
-}
-
-/** Creates a mock API for standalone/demo use without Python backend. */
-function createMockApi(): EditorAPI {
-  return {
-    getProjectSummary: () => ({
-      success: true,
-      data: {
-        project_name: "Untitled",
-        speaker_count: 0,
-        event_count: 0,
-        scene_count: 0,
-        selected_items: [],
-        modified_at: null,
-      },
-    }),
-  } as unknown as EditorAPI;
 }

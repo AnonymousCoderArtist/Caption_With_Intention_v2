@@ -1,9 +1,3 @@
-"""Event editor — add/edit caption events, words, syllables, and timing.
-
-This is the primary workhorse panel where users build and
-edit caption projects manually.
-"""
-
 import { useState, useEffect, useMemo } from "react";
 import type { CaptionEvent, Word, Speaker } from "@/types/project";
 import type { EditorApiClient } from "@/api/client";
