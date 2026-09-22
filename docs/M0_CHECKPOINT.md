@@ -131,4 +131,31 @@ This file documents the current build state for easy checkpoint recovery.
 - [x] Added speaker validation and warning for unknown IDs
 - [x] Added 19 new tests covering all polished features
 - [x] Fixed existing test assertions for corrected ASS format
-- [x] Committed as 5f9ca6e, pushed to origin/main
+- [x] Committed and pushed (main up to date with origin/main)
+
+## ✅ M4 STATUS: DONE (polished and committed)
+
+## 🔨 M5 — Full manual editor (IN PROGRESS)
+
+### M5 Completed So Far
+- [x] Editor class with full CRUD (speakers, events, words, syllables)
+- [x] Timing editor (event-level and word-level)
+- [x] Typography inspector (size, weight, width, italic)
+- [x] Animation inspector (pop_scale, syllable_mode, easing)
+- [x] Box/work-area inspector (opacity, padding, breakout)
+- [x] Speaker editor (color, category, off-camera)
+- [x] Palette assignment
+- [x] Scene overrides
+- [x] Undo/redo history
+- [x] Copy/paste style
+- [x] Multi-select with apply-to-selection
+- [x] Build from transcript
+- [x] Style model expanded (size_pct, weight, width, italic, box_opacity, etc.)
+- [x] 55 new tests (330 total, all passing)
+
+### M5 Remaining
+- [ ] Visual UI (frontend/editor/)
+- [ ] Integration with renderer for real-time preview
+- [ ] Full test coverage for edge cases
+
+## Next: M5 — Full manual editor (UI integration)
