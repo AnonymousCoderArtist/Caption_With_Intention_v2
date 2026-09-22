@@ -135,9 +135,9 @@ This file documents the current build state for easy checkpoint recovery.
 
 ## ✅ M4 STATUS: DONE (polished and committed)
 
-## 🔨 M5 — Full manual editor (IN PROGRESS)
+## ✅ M5 — Full manual editor (COMPLETE)
 
-### M5 Completed So Far
+### M5 Engine (Editor class)
 - [x] Editor class with full CRUD (speakers, events, words, syllables)
 - [x] Timing editor (event-level and word-level)
 - [x] Typography inspector (size, weight, width, italic)
@@ -146,16 +146,36 @@ This file documents the current build state for easy checkpoint recovery.
 - [x] Speaker editor (color, category, off-camera)
 - [x] Palette assignment
 - [x] Scene overrides
-- [x] Undo/redo history
+- [x] Undo/redo history (fixed add/remove action handling)
 - [x] Copy/paste style
 - [x] Multi-select with apply-to-selection
 - [x] Build from transcript
 - [x] Style model expanded (size_pct, weight, width, italic, box_opacity, etc.)
-- [x] 55 new tests (330 total, all passing)
+- [x] 55 editor tests + 26 API tests (all passing)
 
-### M5 Remaining
-- [ ] Visual UI (frontend/editor/)
-- [ ] Integration with renderer for real-time preview
-- [ ] Full test coverage for edge cases
+### M5 API Service Layer
+- [x] EditorAPI — transport-agnostic JSON API (engine/editor/api.py)
+- [x] All Editor methods wrapped with success/error response shape
+- [x] 26 tests covering every API method
 
-## Next: M5 — Full manual editor (UI integration)
+### M5 Visual UI (frontend/editor/)
+- [x] React + TypeScript project scaffold (package.json, tsconfig, vite)
+- [x] TypeScript types mirroring Python schemas (project.ts)
+- [x] EditorApiClient — transport-agnostic API client
+- [x] App.tsx — 3-panel layout (sidebar + timeline + inspector)
+- [x] SpeakerPanel — speaker CRUD + color/palette
+- [x] EventEditor — event/word/syllable editing + timing
+- [x] InspectorPanel — typography/animation/box property editors
+- [x] Timeline — visual timeline tracks (dialogue/SFX/music)
+- [x] Toolbar — undo/redo, select, copy/paste, preview, export
+- [x] Global styles (global.css)
+- [x] API client tests (8 tests), Type validation tests (6 tests)
+
+### Git Checkpoints
+- `13bbe23` — M5 editor engine
+- `5d091c5` — M4/M5 checkpoint docs
+- `2810e27` — Context docs update
+- `981de9a` — Undo/redo fix + API tests
+- `bf171db` — M5 visual UI integration
+
+## Next: M6 — Speech recognition + word alignment
