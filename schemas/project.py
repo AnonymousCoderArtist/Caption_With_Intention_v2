@@ -50,6 +50,10 @@ class Word(BaseModel):
 class Style(BaseModel):
     read_ahead_opacity: float = 0.90
     pop_scale: float = 1.15
+    size_pct: float = 5.0
+    weight: int = 400
+    width: int = 100
+    italic: bool = False
     size_mode: str = "auto"
     weight_mode: str = "auto"
     width_mode: str = "auto"
@@ -58,6 +62,11 @@ class Style(BaseModel):
     pop_duration: Optional[float] = None
     pop_easing: str = "smooth"
     syllable_mode: bool = False
+    box_opacity: float = 0.90
+    box_padding: int = 10
+    breakout_permission: bool = False
+    minimum_pct: float = 3.0
+    maximum_pct: float = 12.0
 
 
 class CaptionEvent(BaseModel):
