@@ -125,10 +125,10 @@ This file documents the current build state for easy checkpoint recovery.
 - [x] Replaced hardcoded read_ahead_opacity (0.90) with event.style.read_ahead_opacity
 - [x] Fixed WHITE_90_PCT from 6-digit to proper 8-digit ASS BGR format
 - [x] Added syllable mode rendering with graceful fallback
+- [x] Fixed syllable mode bug: word.syllables (Pydantic attr) not word.get()
 - [x] Added exception profile rendering support
 - [x] Added helper functions (_compute_opacity_color, _format_pop_scale, _build_syllable_overlays)
 - [x] Added speaker validation and warning for unknown IDs
 - [x] Added 19 new tests covering all polished features
 - [x] Fixed existing test assertions for corrected ASS format
-
-## Next: M5 — Full manual editor
+- [x] Committed as 5f9ca6e, pushed to origin/main
