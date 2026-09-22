@@ -1,5 +1,3 @@
-"""Project summary widget for the header."""
-
 import type { CaptionEvent, Speaker } from "@/types/project";
 
 interface ProjectSummaryProps {

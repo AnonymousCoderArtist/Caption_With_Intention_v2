@@ -1,11 +1,3 @@
-"""Inspector panel — property editor for the selected event.
-
-Provides grouped editors for:
-- Typography (size, weight, width, italic, mode)
-- Animation (pop scale, duration, easing, syllable mode, color transitions)
-- Box properties (opacity, padding, breakout)
-"""
-
 import { useState, useEffect } from "react";
 import type { CaptionEvent } from "@/types/project";
 import type { EditorApiClient } from "@/api/client";
@@ -328,7 +320,7 @@ export function InspectorPanel({ api, eventId, onAction }: InspectorPanelProps) 
   );
 
   async function updateStyle(updates: Record<string, any>) {
-    if (!api) return;
+    if (!api || !event) return;
     try {
       const result = await api.setTypography(event.id, updates);
       if (result?.success) {

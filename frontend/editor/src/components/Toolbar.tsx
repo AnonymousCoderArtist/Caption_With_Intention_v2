@@ -1,5 +1,3 @@
-"""Toolbar with undo/redo, copy/paste, and selection controls."""
-
 import { useState } from "react";
 import type { EditorApiClient } from "@/api/client";
 
@@ -11,9 +9,14 @@ interface ToolbarProps {
 export function Toolbar({ api, onAction }: ToolbarProps) {
   const [message, setMessage] = useState<string | null>(null);
 
-  const flash = async (fn: () => Promise<any>, text: string) => {
+  const flash = async (action: () => void | Promise<void>, text: string) => {
     setMessage(text);
     onAction();
+    try {
+      await action();
+    } catch {
+      // ignore
+    }
     setTimeout(() => setMessage(null), 1800);
   };
 
@@ -43,17 +46,17 @@ export function Toolbar({ api, onAction }: ToolbarProps) {
 
       <div className="toolbar-separator" />
 
-      <button onClick={() => flash(() => api?.copy_style ? api.copy_style("") : {}, "Copy style (select event first)")}>
+      <button onClick={() => flash(async () => { if (api?.copy_style) await api.copy_style(""); }, "Copy style (select event first)")}>
         Copy Style
       </button>
-      <button onClick={() => flash(() => api?.paste_style ? {} : {}, "Paste style to selected")}>
+      <button onClick={() => flash(async () => { if (api?.paste_style) await api.paste_style("", ""); }, "Paste style to selected")}>
         Paste Style
       </button>
 
       <div className="toolbar-separator" />
 
-      <button onClick={() => flash(() => {}, "Preview render")}>▶ Preview</button>
-      <button onClick={() => flash(() => {}, "Export project")}>Export</button>
+      <button onClick={() => flash(() => { }, "Preview render")}>▶ Preview</button>
+      <button onClick={() => flash(() => { }, "Export project")}>Export</button>
     </div>
   );
 }

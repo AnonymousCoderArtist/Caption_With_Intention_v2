@@ -1,9 +1,3 @@
-"""Timeline visual track showing events as colored bars.
-
-Each event is rendered as a bar proportional to its duration
-positioned at its start time relative to the project total duration.
-"""
-
 import { useEffect, useState } from "react";
 import type { CaptionEvent, Project } from "@/types/project";
 import type { EditorApiClient } from "@/api/client";

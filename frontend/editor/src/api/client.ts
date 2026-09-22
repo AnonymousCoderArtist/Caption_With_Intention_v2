@@ -21,6 +21,8 @@ import type {
   BoxState,
 } from "@/types/project";
 
+export type { ApiResponse, CaptionEvent, Project, Speaker, Word, Style, TranscriptEntry, SpeakerInput, TypographyState, AnimationState, BoxState };
+
 // ─── Transport Interface ──────────────────────────────────
 
 export type TransportFn = (
@@ -100,7 +102,7 @@ export class EditorApiClient {
     end: number;
     speaker_id?: string;
     event_type?: string;
-    words?: array<Record<string, any>>;
+    words?: Array<Record<string, any>>;
   }): Promise<ApiResponse<CaptionEvent>> {
     return this.transport("add_event", params);
   }

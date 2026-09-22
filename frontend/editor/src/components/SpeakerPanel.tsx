@@ -1,5 +1,3 @@
-"""Speaker management panel — add, edit, remove, assign palette colors."""
-
 import { useState, useEffect } from "react";
 import type { Speaker, SpeakerCategory } from "@/types/project";
 import type { EditorApiClient } from "@/api/client";
