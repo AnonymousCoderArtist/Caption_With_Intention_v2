@@ -8,11 +8,11 @@ interface TimelineProps {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  dialogue: "var(--color-accent)",
-  sound_effect: "var(--color-warning)",
-  music: "#a78bfa",
-  speaker_overlap: "var(--color-danger)",
-  custom: "var(--color-text-secondary)",
+  dialogue: "#4a9eff",
+  sound_effect: "#d4a040",
+  music: "#9070d0",
+  speaker_overlap: "#e06060",
+  custom: "#8287a0",
 };
 
 function formatTime(seconds: number): string {
@@ -37,7 +37,7 @@ function EventBar({
     ((event.end - event.start) / projectDuration) * 100,
     0.3,
   );
-  const color = TYPE_COLORS[event.type] ?? "var(--color-border)";
+  const color = TYPE_COLORS[event.type] ?? "#8287a0";
 
   return (
     <div
@@ -46,7 +46,7 @@ function EventBar({
         left: `${left}%`,
         width: `${width}%`,
         backgroundColor: color,
-        color: "var(--color-bg-primary)",
+        color: "var(--bg-0)",
       }}
       onClick={onClick}
       title={`${event.text || event.type} (${formatTime(event.start)} - ${formatTime(event.end)})`}
@@ -67,7 +67,7 @@ export function Timeline({ api, onAction }: TimelineProps) {
         setProject(result.data);
       }
     } catch {
-      // silent — mock API may not have data
+      // silent
     }
   }
 
@@ -77,120 +77,147 @@ export function Timeline({ api, onAction }: TimelineProps) {
 
   const duration = project?.video?.duration ?? 0;
 
+  const rulerMarks = duration > 0
+    ? Array.from({ length: Math.min(Math.ceil(duration / 10) + 1, 20) }).map((_, i) => i * 10)
+    : [];
+
   return (
-    <div className="panel" style={{ marginBottom: "var(--sp-5)" }}>
-      <h2>
-        Timeline
+    <div className="panel" style={{ marginBottom: "var(--sp-4)", animation: "fadeIn 0.2s ease" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "var(--sp-3)" }}>
+        <h2 style={{ marginBottom: 0, border: "none", padding: 0 }}>Timeline</h2>
         {duration > 0 && (
           <span
             style={{
               fontSize: "0.78rem",
               fontWeight: 400,
               color: "var(--text-400)",
-              marginLeft: "var(--sp-2)",
+              fontFamily: "var(--font-mono)",
             }}
           >
             {formatTime(duration)}
           </span>
         )}
-      </h2>
+      </div>
 
       {/* Time ruler */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
-          fontSize: "0.68rem",
+          fontSize: "0.66rem",
           color: "var(--text-400)",
           padding: "0 0 var(--sp-1) 0",
           fontFamily: "var(--font-mono)",
+          marginBottom: "var(--sp-1)",
+          borderBottom: "1px solid var(--border)",
+          paddingBottom: "var(--sp-1)",
         }}
       >
-        {duration > 0 &&
-          Array.from({ length: Math.min(Math.ceil(duration / 10) + 1, 12) }).map((_, i) => (
-            <span key={i}>{formatTime(i * 10)}</span>
-          ))}
+        {rulerMarks.map((t) => (
+          <span key={t}>{formatTime(t)}</span>
+        ))}
       </div>
 
-      {/* Dialogue track */}
-      <div className="timeline-track">
-        <span
-          style={{
-            position: "absolute",
-            top: "2px",
-            left: "var(--spacing-sm)",
-            fontSize: "0.65rem",
-            color: "var(--color-text-muted)",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-          }}
-        >
-          Dialogue
-        </span>
-        {project?.events
-          ?.filter((e) => e.type === "dialogue")
-          .map((event) => (
-            <EventBar
-              key={event.id}
-              event={event}
-              projectDuration={duration}
-              onClick={() => {}}
-            />
-          ))}
-      </div>
+      {/* Playhead + Tracks */}
+      <div style={{ position: "relative" }}>
+        {duration > 0 && (
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: "0px",
+              width: "1px",
+              background: "var(--danger)",
+              zIndex: 10,
+              pointerEvents: "none",
+            }}
+          />
+        )}
 
-      {/* SFX track */}
-      <div className="timeline-track" style={{ height: "26px" }}>
-        <span
-          style={{
-            position: "absolute",
-            top: "2px",
-            left: "var(--sp-2)",
-            fontSize: "0.62rem",
-            color: "var(--text-400)",
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-          }}
-        >
-          SFX
-        </span>
-        {project?.events
-          ?.filter((e) => e.type === "sound_effect")
-          .map((event) => (
-            <EventBar
-              key={event.id}
-              event={event}
-              projectDuration={duration}
-              onClick={() => {}}
-            />
-          ))}
-      </div>
+        {/* Dialogue track */}
+        <div className="timeline-track">
+          <span
+            style={{
+              position: "absolute",
+              top: "2px",
+              left: "var(--sp-2)",
+              fontSize: "0.62rem",
+              color: "var(--text-400)",
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              zIndex: 5,
+            }}
+          >
+            Dialogue
+          </span>
+          {project?.events
+            ?.filter((e) => e.type === "dialogue")
+            .map((event) => (
+              <EventBar
+                key={event.id}
+                event={event}
+                projectDuration={duration}
+                onClick={() => {}}
+              />
+            ))}
+        </div>
 
-      {/* Music track */}
-      <div className="timeline-track" style={{ height: "26px" }}>
-        <span
-          style={{
-            position: "absolute",
-            top: "2px",
-            left: "var(--sp-2)",
-            fontSize: "0.62rem",
-            color: "var(--text-400)",
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-          }}
-        >
-          Music
-        </span>
-        {project?.events
-          ?.filter((e) => e.type === "music")
-          .map((event) => (
-            <EventBar
-              key={event.id}
-              event={event}
-              projectDuration={duration}
-              onClick={() => {}}
-            />
-          ))}
+        {/* SFX track */}
+        <div className="timeline-track" style={{ height: "26px" }}>
+          <span
+            style={{
+              position: "absolute",
+              top: "2px",
+              left: "var(--sp-2)",
+              fontSize: "0.62rem",
+              color: "var(--text-400)",
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              zIndex: 5,
+            }}
+          >
+            SFX
+          </span>
+          {project?.events
+            ?.filter((e) => e.type === "sound_effect")
+            .map((event) => (
+              <EventBar
+                key={event.id}
+                event={event}
+                projectDuration={duration}
+                onClick={() => {}}
+              />
+            ))}
+        </div>
+
+        {/* Music track */}
+        <div className="timeline-track" style={{ height: "26px" }}>
+          <span
+            style={{
+              position: "absolute",
+              top: "2px",
+              left: "var(--sp-2)",
+              fontSize: "0.62rem",
+              color: "var(--text-400)",
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              zIndex: 5,
+            }}
+          >
+            Music
+          </span>
+          {project?.events
+            ?.filter((e) => e.type === "music")
+            .map((event) => (
+              <EventBar
+                key={event.id}
+                event={event}
+                projectDuration={duration}
+                onClick={() => {}}
+              />
+            ))}
+        </div>
       </div>
 
       {duration === 0 && (

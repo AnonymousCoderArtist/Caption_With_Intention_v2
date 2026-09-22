@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { Speaker, SpeakerCategory } from "@/types/project";
 import type { EditorApiClient } from "@/api/client";
 
@@ -18,7 +18,7 @@ export function SpeakerPanel({ api, onAction }: SpeakerPanelProps) {
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [category, setCategory] = useState<string>("main");
-  const [color, setColor] = useState<string>("#E5E517");
+  const [color, setColor] = useState<string>("#4a9eff");
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = async () => {
@@ -92,7 +92,7 @@ export function SpeakerPanel({ api, onAction }: SpeakerPanelProps) {
               />
             </div>
             <div style={{ display: "flex", gap: "var(--sp-2)", marginTop: "var(--sp-2)" }}>
-              <button onClick={add}>Save</button>
+              <button className="primary" onClick={add}>Save</button>
               <button className="ghost" onClick={() => setShowForm(false)}>Cancel</button>
             </div>
           </div>
@@ -100,8 +100,9 @@ export function SpeakerPanel({ api, onAction }: SpeakerPanelProps) {
       </div>
 
       {speakers.length === 0 ? (
-        <div style={{ color: "var(--text-400)", padding: "var(--sp-5) 0", textAlign: "center" }}>
-          No speakers yet. Add one to begin.
+        <div className="empty-state">
+          <span className="empty-state-icon">+</span>
+          <span>No speakers yet — click + to add</span>
         </div>
       ) : (
         <div>
@@ -120,19 +121,37 @@ export function SpeakerPanel({ api, onAction }: SpeakerPanelProps) {
                 <div style={{ fontWeight: 600, fontSize: "0.88rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {s.name}
                 </div>
-                <div style={{ fontSize: "0.72rem", color: "var(--text-400)", fontFamily: "var(--font-mono)" }}>
-                  {s.id}
-                  {s.off_camera && " · off-camera"}
-                </div>
               </div>
               <span className={`badge badge-${s.category}`}>
                 {CATEGORY_LABELS[s.category] ?? s.category}
               </span>
-              <button className="ghost" onClick={() => remove(s.id, s.name)} title="Remove" style={{ padding: "var(--sp-1) var(--sp-2)" }}>✕</button>
+              <button
+                className="ghost speaker-delete"
+                onClick={() => remove(s.id, s.name)}
+                title="Remove"
+                style={{
+                  padding: "var(--sp-1) var(--sp-2)",
+                  fontSize: "0.75rem",
+                  opacity: 0,
+                  transition: "opacity var(--t-fast)",
+                  marginLeft: "var(--sp-1)",
+                }}
+              >
+                &#10005;
+              </button>
             </div>
           ))}
         </div>
       )}
+
+      <style>{`
+        .speaker-delete:hover {
+          opacity: 1 !important;
+        }
+        .speaker-card:hover {
+          border-color: var(--border-light);
+        }
+      `}</style>
     </div>
   );
 }
