@@ -1,62 +1,67 @@
-import { useState } from "react";
+import { useCallback } from "react";
 import type { EditorApiClient } from "@/api/client";
 
 interface ToolbarProps {
   api: EditorApiClient | any;
   onAction: () => void;
+  showToast: (msg: string) => void;
 }
 
-export function Toolbar({ api, onAction }: ToolbarProps) {
-  const [message, setMessage] = useState<string | null>(null);
-
-  const flash = async (action: () => void | Promise<void>, text: string) => {
-    setMessage(text);
+export function Toolbar({ api, onAction, showToast }: ToolbarProps) {
+  const flash = useCallback(async (action: () => void | Promise<void>, text: string) => {
+    showToast(text);
     onAction();
     try {
       await action();
     } catch {
       // ignore
     }
-    setTimeout(() => setMessage(null), 1800);
-  };
+  }, [onAction, showToast]);
 
   return (
     <div className="toolbar">
-      {message && (
-        <span className="text-success" style={{ fontSize: "0.8rem" }}>
-          {message}
-        </span>
-      )}
-
-      <button onClick={() => flash(() => api?.undo?.(), "Undo")} title="Undo">
-        ↩ Undo
+      <button className="toolbar-btn" onClick={() => flash(() => api?.undo?.(), "Undo")} title="Undo">
+        &#8630; Undo
       </button>
-      <button onClick={() => flash(() => api?.redo?.(), "Redo")} title="Redo (Ctrl+Y)">
-        ↪ Redo
+      <button className="toolbar-btn" onClick={() => flash(() => api?.redo?.(), "Redo")} title="Redo (Ctrl+Y)">
+        &#8631; Redo
       </button>
 
       <div className="toolbar-separator" />
 
-      <button onClick={() => flash(() => api?.selectAll?.(), "All events selected")} title="Select All">
-        Select All
+      <button className="toolbar-btn" onClick={() => flash(() => { }, "Add Speaker")} title="Add Speaker">
+        &#43; Speaker
       </button>
-      <button onClick={() => flash(() => api?.clearSelection?.(), "Selection cleared")} title="Deselect All">
-        Deselect
-      </button>
-
-      <div className="toolbar-separator" />
-
-      <button onClick={() => flash(async () => { if (api?.copy_style) await api.copy_style(""); }, "Copy style (select event first)")}>
-        Copy Style
-      </button>
-      <button onClick={() => flash(async () => { if (api?.paste_style) await api.paste_style("", ""); }, "Paste style to selected")}>
-        Paste Style
+      <button className="toolbar-btn" onClick={() => flash(() => { }, "Add Event")} title="Add Event">
+        &#43; Event
       </button>
 
       <div className="toolbar-separator" />
 
-      <button onClick={() => flash(() => { }, "Preview render")}>▶ Preview</button>
-      <button onClick={() => flash(() => { }, "Export project")}>Export</button>
+      <button className="toolbar-btn" onClick={() => flash(() => api?.selectAll?.(), "All events selected")} title="Select All">
+        &#8862; Select All
+      </button>
+      <button className="toolbar-btn" onClick={() => flash(() => api?.clearSelection?.(), "Selection cleared")} title="Deselect All">
+        &#8856; Deselect
+      </button>
+
+      <div className="toolbar-separator" />
+
+      <button className="toolbar-btn" onClick={() => flash(async () => { if (api?.copy_style) await api.copy_style(""); }, "Copy style")} title="Copy Style">
+        &#9246; Copy
+      </button>
+      <button className="toolbar-btn" onClick={() => flash(async () => { if (api?.paste_style) await api.paste_style("", ""); }, "Paste style")} title="Paste Style">
+        &#8679; Paste
+      </button>
+
+      <div className="toolbar-separator" />
+
+      <button className="toolbar-btn" onClick={() => flash(() => { }, "Preview render")} title="Preview">
+        &#9654; Preview
+      </button>
+      <button className="toolbar-btn" onClick={() => flash(() => { }, "Export project")} title="Export">
+        &#8678; Export
+      </button>
     </div>
   );
 }

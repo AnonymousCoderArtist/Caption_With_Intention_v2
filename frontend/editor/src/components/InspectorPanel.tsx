@@ -40,8 +40,9 @@ export function InspectorPanel({ api, eventId, onAction }: InspectorPanelProps) 
 
   if (!event) {
     return (
-      <div style={{ color: "var(--color-text-muted)" }}>
-        Event not found. Select a different event.
+      <div className="empty-state">
+        <span className="empty-state-icon">&#9432;</span>
+        <span>Event not found. Select a different event.</span>
       </div>
     );
   }
@@ -53,9 +54,9 @@ export function InspectorPanel({ api, eventId, onAction }: InspectorPanelProps) 
       <h2>Inspector</h2>
       <div
         style={{
-          fontSize: "0.8rem",
-          color: "var(--color-text-muted)",
-          marginBottom: "var(--spacing-md)",
+          fontSize: "0.76rem",
+          color: "var(--text-400)",
+          marginBottom: "var(--sp-4)",
           fontFamily: "var(--font-mono)",
         }}
       >
@@ -63,8 +64,10 @@ export function InspectorPanel({ api, eventId, onAction }: InspectorPanelProps) 
       </div>
 
       {/* Typography Section */}
-      <div className="panel panel-section">
-        <h3>Typography</h3>
+      <div className="panel panel-section" style={{ animation: "fadeIn 0.2s ease" }}>
+        <div style={{ borderBottom: "1px solid var(--border)", paddingBottom: "var(--sp-2)", marginBottom: "var(--sp-3)" }}>
+          <h3 style={{ marginBottom: 0, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-200)" }}>Typography</h3>
+        </div>
 
         <div className="inspector-field">
           <label>Size %</label>
@@ -74,9 +77,7 @@ export function InspectorPanel({ api, eventId, onAction }: InspectorPanelProps) 
             max="100"
             step="0.5"
             value={style.size_pct}
-            onChange={(e) =>
-              updateStyle({ size_pct: parseFloat(e.target.value) || 5.0 })
-            }
+            onChange={(e) => updateStyle({ size_pct: parseFloat(e.target.value) || 5.0 })}
           />
         </div>
 
@@ -119,9 +120,9 @@ export function InspectorPanel({ api, eventId, onAction }: InspectorPanelProps) 
           />
         </div>
 
-        <div style={{ display: "flex", gap: "var(--spacing-sm)", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "var(--sp-3)", flexWrap: "wrap" }}>
           <div className="inspector-field" style={{ margin: 0 }}>
-            <label style={{ width: "auto" }}>Size Mode</label>
+            <label style={{ width: "auto", minWidth: "56px" }}>Size</label>
             <select
               value={style.size_mode}
               onChange={(e) => updateStyle({ size_mode: e.target.value as "auto" | "manual" })}
@@ -131,7 +132,7 @@ export function InspectorPanel({ api, eventId, onAction }: InspectorPanelProps) 
             </select>
           </div>
           <div className="inspector-field" style={{ margin: 0 }}>
-            <label style={{ width: "auto" }}>Weight Mode</label>
+            <label style={{ width: "auto", minWidth: "60px" }}>Weight</label>
             <select
               value={style.weight_mode}
               onChange={(e) => updateStyle({ weight_mode: e.target.value as "auto" | "manual" })}
@@ -141,7 +142,7 @@ export function InspectorPanel({ api, eventId, onAction }: InspectorPanelProps) 
             </select>
           </div>
           <div className="inspector-field" style={{ margin: 0 }}>
-            <label style={{ width: "auto" }}>Width Mode</label>
+            <label style={{ width: "auto", minWidth: "58px" }}>Width</label>
             <select
               value={style.width_mode}
               onChange={(e) => updateStyle({ width_mode: e.target.value as "auto" | "manual" })}
@@ -154,8 +155,10 @@ export function InspectorPanel({ api, eventId, onAction }: InspectorPanelProps) 
       </div>
 
       {/* Animation Section */}
-      <div className="panel panel-section">
-        <h3>Animation</h3>
+      <div className="panel panel-section" style={{ animation: "fadeIn 0.2s ease" }}>
+        <div style={{ borderBottom: "1px solid var(--border)", paddingBottom: "var(--sp-2)", marginBottom: "var(--sp-3)" }}>
+          <h3 style={{ marginBottom: 0, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-200)" }}>Animation</h3>
+        </div>
 
         <div className="inspector-field">
           <label>Pop Scale</label>
@@ -165,25 +168,19 @@ export function InspectorPanel({ api, eventId, onAction }: InspectorPanelProps) 
             max="2.0"
             step="0.05"
             value={style.pop_scale}
-            onChange={(e) =>
-              updateStyle({ pop_scale: parseFloat(e.target.value) || 1.15 })
-            }
+            onChange={(e) => updateStyle({ pop_scale: parseFloat(e.target.value) || 1.15 })}
           />
         </div>
 
         <div className="inspector-field">
-          <label>Pop Duration (s)</label>
+          <label>Pop Duration</label>
           <input
             type="number"
             min="0"
             max="2"
             step="0.05"
             value={style.pop_duration ?? 0}
-            onChange={(e) =>
-              updateStyle({
-                pop_duration: parseFloat(e.target.value) || 0,
-              })
-            }
+            onChange={(e) => updateStyle({ pop_duration: parseFloat(e.target.value) || 0 })}
           />
         </div>
 
@@ -216,11 +213,7 @@ export function InspectorPanel({ api, eventId, onAction }: InspectorPanelProps) 
             max="1"
             step="0.05"
             value={style.color_transition_point ?? 0}
-            onChange={(e) =>
-              updateStyle({
-                color_transition_point: parseFloat(e.target.value) || 0,
-              })
-            }
+            onChange={(e) => updateStyle({ color_transition_point: parseFloat(e.target.value) || 0 })}
           />
         </div>
 
@@ -232,11 +225,7 @@ export function InspectorPanel({ api, eventId, onAction }: InspectorPanelProps) 
             max="2"
             step="0.05"
             value={style.color_transition_duration ?? 0}
-            onChange={(e) =>
-              updateStyle({
-                color_transition_duration: parseFloat(e.target.value) || 0,
-              })
-            }
+            onChange={(e) => updateStyle({ color_transition_duration: parseFloat(e.target.value) || 0 })}
           />
         </div>
 
@@ -248,16 +237,16 @@ export function InspectorPanel({ api, eventId, onAction }: InspectorPanelProps) 
             max="1"
             step="0.05"
             value={style.read_ahead_opacity}
-            onChange={(e) =>
-              updateStyle({ read_ahead_opacity: parseFloat(e.target.value) || 0.9 })
-            }
+            onChange={(e) => updateStyle({ read_ahead_opacity: parseFloat(e.target.value) || 0.9 })}
           />
         </div>
       </div>
 
-      {/* Box / Work Area Section */}
-      <div className="panel panel-section">
-        <h3>Caption Box</h3>
+      {/* Caption Box Section */}
+      <div className="panel panel-section" style={{ animation: "fadeIn 0.2s ease" }}>
+        <div style={{ borderBottom: "1px solid var(--border)", paddingBottom: "var(--sp-2)", marginBottom: "var(--sp-3)" }}>
+          <h3 style={{ marginBottom: 0, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-200)" }}>Caption Box</h3>
+        </div>
 
         <div className="inspector-field">
           <label>Opacity</label>
@@ -272,7 +261,7 @@ export function InspectorPanel({ api, eventId, onAction }: InspectorPanelProps) 
         </div>
 
         <div className="inspector-field">
-          <label>Padding (px)</label>
+          <label>Padding</label>
           <input
             type="number"
             min="0"
@@ -284,7 +273,7 @@ export function InspectorPanel({ api, eventId, onAction }: InspectorPanelProps) 
         </div>
 
         <div className="inspector-field">
-          <label>Break Out Permission</label>
+          <label>Break Out</label>
           <input
             type="checkbox"
             checked={style.breakout_permission}
@@ -316,6 +305,18 @@ export function InspectorPanel({ api, eventId, onAction }: InspectorPanelProps) 
           />
         </div>
       </div>
+
+      <style>{`
+        .inspector-field input[type="number"] {
+          width: 80px;
+          font-family: var(--font-mono);
+          font-size: 0.8rem;
+        }
+        .inspector-field select {
+          font-size: 0.78rem;
+          max-width: 120px;
+        }
+      `}</style>
     </div>
   );
 

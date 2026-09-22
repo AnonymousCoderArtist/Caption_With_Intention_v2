@@ -45,7 +45,7 @@ function NewEventForm({ api, speakers, onCreated, onCancel }: NewEventFormProps)
   };
 
   return (
-    <form onSubmit={handleSubmit} className="panel" style={{ marginBottom: "var(--spacing-lg)" }}>
+    <form onSubmit={handleSubmit} className="panel" style={{ marginBottom: "var(--sp-4)" }}>
       <h3>New Caption Event</h3>
       <div className="inspector-field">
         <label>Text</label>
@@ -59,7 +59,7 @@ function NewEventForm({ api, speakers, onCreated, onCancel }: NewEventFormProps)
           }}
         />
       </div>
-      <div style={{ display: "flex", gap: "var(--spacing-md)", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: "var(--sp-3)", flexWrap: "wrap" }}>
         <div className="inspector-field">
           <label>Start</label>
           <input
@@ -102,11 +102,9 @@ function NewEventForm({ api, speakers, onCreated, onCancel }: NewEventFormProps)
           </select>
         </div>
       </div>
-      <div style={{ display: "flex", gap: "var(--spacing-sm)", marginTop: "var(--spacing-sm)" }}>
-        <button type="submit">Add Event</button>
-        <button type="button" onClick={onCancel}>
-          Cancel
-        </button>
+      <div style={{ display: "flex", gap: "var(--sp-2)", marginTop: "var(--sp-2)" }}>
+        <button type="submit" className="primary">Add Event</button>
+        <button type="button" className="ghost" onClick={onCancel}>Cancel</button>
       </div>
     </form>
   );
@@ -182,7 +180,7 @@ export function EventEditor({
   const handleWordAdd = async (eventId: string) => {
     if (!api || !editingEvent) return;
     const words = editingEvent.words;
-    const lastEnd = words.length > 0 ? words[words.length - 1].end : eventId ? events.find(e => e.id === eventId)?.end ?? 0 : 0;
+    const lastEnd = words.length > 0 ? words[words.length - 1].end : 0;
     const wordStart = lastEnd;
     const wordEnd = wordStart + 0.3;
     try {
@@ -198,10 +196,7 @@ export function EventEditor({
     }
   };
 
-  const handleTimingChange = async (
-    field: "start" | "end",
-    value: number,
-  ) => {
+  const handleTimingChange = async (field: "start" | "end", value: number) => {
     if (!api || !selectedEventId || selectedEventId === "__new__") return;
     try {
       if (field === "start") {
@@ -246,17 +241,13 @@ export function EventEditor({
     if (!api || !selectedEventId || selectedEventId === "__new__") return;
     try {
       await api.updateEvent(selectedEventId, { text });
-      // Update local state
       setEditingEvent((prev) => (prev ? { ...prev, text } : prev));
     } catch (err) {
       setMessage(`Error: ${err}`);
     }
   };
 
-  const handleWordTextChange = async (
-    wordIndex: number,
-    text: string,
-  ) => {
+  const handleWordTextChange = async (wordIndex: number, text: string) => {
     if (!api || !selectedEventId) return;
     try {
       await api.updateWord(selectedEventId, wordIndex, { text });
@@ -267,11 +258,7 @@ export function EventEditor({
     }
   };
 
-  const handleWordTimingChange = async (
-    wordIndex: number,
-    field: "start" | "end",
-    value: number,
-  ) => {
+  const handleWordTimingChange = async (wordIndex: number, field: "start" | "end", value: number) => {
     if (!api || !selectedEventId) return;
     try {
       await api.adjustWordTiming(selectedEventId, wordIndex, field === "start" ? value - (editingEvent?.words?.[wordIndex]?.start ?? 0) : 0, field === "end" ? value - (editingEvent?.words?.[wordIndex]?.end ?? 0) : 0);
@@ -297,11 +284,12 @@ export function EventEditor({
       )}
 
       {/* Event list */}
-      <div style={{ marginBottom: "var(--spacing-lg)" }}>
-        <h3 style={{ marginBottom: "var(--spacing-sm)" }}>All Events</h3>
+      <div style={{ marginBottom: "var(--sp-4)" }}>
+        <h3 style={{ marginBottom: "var(--sp-2)" }}>All Events</h3>
         {events.length === 0 ? (
-          <div style={{ color: "var(--color-text-muted)" }}>
-            No events yet. Create one below.
+          <div className="empty-state">
+            <span className="empty-state-icon">+</span>
+            <span>No events yet. Create one below.</span>
           </div>
         ) : (
           events.map((event) => (
@@ -341,15 +329,16 @@ export function EventEditor({
 
       {/* Selected event detail */}
       {selectedEvent && (
-        <div className="panel" style={{ marginTop: "var(--spacing-lg)" }}>
-          <h3>
-            {selectedEvent.id}
+        <div className="panel" style={{ marginTop: "var(--sp-4)", animation: "fadeIn 0.2s ease" }}>
+          <h3 style={{ marginBottom: "var(--sp-4)" }}>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.82rem", color: "var(--accent)" }}>{selectedEvent.id}</span>
             <span
               style={{
-                marginLeft: "var(--spacing-sm)",
-                fontSize: "0.8rem",
+                marginLeft: "var(--sp-3)",
+                fontSize: "0.78rem",
                 fontWeight: 400,
-                color: "var(--color-text-muted)",
+                color: "var(--text-400)",
+                textTransform: "uppercase",
               }}
             >
               {selectedEvent.type}
@@ -357,7 +346,7 @@ export function EventEditor({
           </h3>
 
           {/* Timing */}
-          <div style={{ display: "flex", gap: "var(--spacing-lg)", flexWrap: "wrap", marginBottom: "var(--spacing-md)" }}>
+          <div style={{ display: "flex", gap: "var(--sp-4)", flexWrap: "wrap", marginBottom: "var(--sp-4)" }}>
             <div className="inspector-field">
               <label>Start</label>
               <input
@@ -408,23 +397,22 @@ export function EventEditor({
           </div>
 
           {/* Text */}
-          <div className="inspector-field" style={{ marginBottom: "var(--spacing-lg)" }}>
+          <div className="inspector-field" style={{ marginBottom: "var(--sp-4)" }}>
             <label>Text</label>
             <textarea
               value={selectedEvent.text}
               onChange={(e) => handleTextChange(e.target.value)}
               rows={2}
-              style={{ fontFamily: "var(--font-sans)" }}
             />
           </div>
 
           {/* Words */}
-          <div style={{ marginBottom: "var(--spacing-md)" }}>
-            <h3 style={{ fontSize: "0.9rem", marginBottom: "var(--spacing-sm)" }}>
+          <div style={{ marginBottom: "var(--sp-2)" }}>
+            <h3 style={{ fontSize: "0.88rem", marginBottom: "var(--sp-2)" }}>
               Words ({selectedEvent.words.length})
             </h3>
             {selectedEvent.words.length === 0 ? (
-              <div style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}>
+              <div style={{ color: "var(--text-400)", fontSize: "0.82rem" }}>
                 No words yet. Add them manually or build from transcript.
               </div>
             ) : (
@@ -443,7 +431,7 @@ export function EventEditor({
             )}
             <button
               onClick={() => handleWordAdd(selectedEvent.id)}
-              style={{ marginTop: "var(--spacing-sm)" }}
+              style={{ marginTop: "var(--sp-2)" }}
             >
               + Add Word
             </button>
@@ -475,23 +463,17 @@ function WordRow({
 }) {
   return (
     <div
-      className="event-card"
-      style={{
-        padding: "var(--spacing-sm)",
-        marginBottom: "var(--spacing-xs)",
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--spacing-sm)",
-        flexWrap: "wrap",
-      }}
+      className="word-row"
+      style={{ animation: "fadeIn 0.15s ease" }}
     >
       <span
         style={{
-          fontSize: "0.7rem",
-          color: "var(--color-text-muted)",
+          fontSize: "0.68rem",
+          color: "var(--text-500)",
           fontFamily: "var(--font-mono)",
-          width: "24px",
+          width: "20px",
           textAlign: "center",
+          flexShrink: 0,
         }}
       >
         {index + 1}
@@ -500,13 +482,15 @@ function WordRow({
         value={word.text}
         onChange={(e) => onTextChange(e.target.value)}
         style={{
-          width: "100px",
+          flex: 1,
+          minWidth: "80px",
           fontSize: "0.85rem",
           fontWeight: word.weight >= 600 ? 600 : 400,
+          background: "var(--bg-input)",
         }}
       />
       <div className="inspector-field" style={{ margin: 0 }}>
-        <label style={{ width: "auto" }}>S</label>
+        <label style={{ width: "auto", fontSize: "0.68rem", minWidth: "12px" }}>S</label>
         <input
           type="number"
           step="0.01"
@@ -514,11 +498,11 @@ function WordRow({
           onChange={(e) => onStartChange(parseFloat(e.target.value) || 0)}
           min={eventStart}
           max={word.end}
-          style={{ width: "80px" }}
+          style={{ width: "72px" }}
         />
       </div>
       <div className="inspector-field" style={{ margin: 0 }}>
-        <label style={{ width: "auto" }}>E</label>
+        <label style={{ width: "auto", fontSize: "0.68rem", minWidth: "12px" }}>E</label>
         <input
           type="number"
           step="0.01"
@@ -526,10 +510,10 @@ function WordRow({
           onChange={(e) => onEndChange(parseFloat(e.target.value) || 1)}
           min={word.start}
           max={eventEnd}
-          style={{ width: "80px" }}
+          style={{ width: "72px" }}
         />
       </div>
-      <span style={{ fontSize: "0.7rem", color: "var(--color-text-muted)", fontFamily: "var(--font-mono)" }}>
+      <span style={{ fontSize: "0.68rem", color: "var(--text-400)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
         {word.size_pct}% / {word.weight}w
       </span>
     </div>

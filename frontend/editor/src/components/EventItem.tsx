@@ -14,18 +14,11 @@ function formatTime(seconds: number): string {
 }
 
 export function EventItem({ event, isSelected, onSelect, onDelete }: EventItemProps) {
-  const typeColors: Record<string, string> = {
-    dialogue: "var(--accent)",
-    sound_effect: "var(--warning)",
-    music: "#a78bfa",
-    speaker_overlap: "var(--danger)",
-    custom: "var(--text-secondary)",
-  };
-
   return (
     <div
       className={`event-card ${isSelected ? "selected" : ""}`}
       onClick={onSelect}
+      style={{ animation: "fadeIn 0.15s ease" }}
     >
       <div
         style={{
@@ -35,25 +28,23 @@ export function EventItem({ event, isSelected, onSelect, onDelete }: EventItemPr
           marginBottom: "var(--sp-1)",
         }}
       >
-        <span
-          className={`badge badge-${event.type}`}
-          style={{
-            backgroundColor: typeColors[event.type] ?? "var(--border)",
-            color: "var(--bg-0)",
-          }}
-        >
+        <span className={`badge badge-${event.type}`}>
           {event.type}
         </span>
-        <span style={{ fontSize: "0.72rem", color: "var(--text-400)", marginLeft: "auto", fontFamily: "var(--font-mono)" }}>
+        <span style={{ fontSize: "0.7rem", color: "var(--text-400)", marginLeft: "auto", fontFamily: "var(--font-mono)" }}>
           {event.id}
         </span>
       </div>
 
       <div
         style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: "0.8rem",
-          marginBottom: "2px",
+          fontFamily: "var(--font-sans)",
+          fontSize: "0.84rem",
+          marginBottom: "3px",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          color: "var(--text-200)",
         }}
       >
         {event.text || "(empty)"}
@@ -66,10 +57,11 @@ export function EventItem({ event, isSelected, onSelect, onDelete }: EventItemPr
           fontSize: "0.7rem",
           color: "var(--text-400)",
           fontFamily: "var(--font-mono)",
+          alignItems: "center",
         }}
       >
         <span>{formatTime(event.start)}</span>
-        <span>→</span>
+        <span style={{ color: "var(--text-500)" }}>&#8594;</span>
         <span>{formatTime(event.end)}</span>
       </div>
 
@@ -78,16 +70,30 @@ export function EventItem({ event, isSelected, onSelect, onDelete }: EventItemPr
           e.stopPropagation();
           onDelete();
         }}
+        className="event-delete-btn"
         style={{
           fontSize: "0.68rem",
           marginTop: "var(--sp-1)",
           color: "var(--danger)",
-          opacity: 0.8,
-          padding: "var(--sp-1)",
+          opacity: 0,
+          padding: "var(--sp-1) var(--sp-2)",
+          background: "transparent",
+          border: "none",
+          cursor: "pointer",
+          transition: "opacity var(--t-fast)",
         }}
       >
-        Delete event
+        &#10005; Delete
       </button>
+
+      <style>{`
+        .event-card:hover .event-delete-btn {
+          opacity: 0.7;
+        }
+        .event-card:hover .event-delete-btn:hover {
+          opacity: 1;
+        }
+      `}</style>
     </div>
   );
 }
