@@ -5,18 +5,20 @@ CWI transforms closed captions into an expressive, accessible experience (color 
 
 ## Branch Status
 - **Branch**: `main` (current), `master` (up to date with origin)
-- **Milestones**: M0 ✅, M1 ✅, M2 ✅, M3 ✅, M4 ✅ (polished), M5 ✅ (editor engine), M5 🔨 (visual UI)
-- **Tests**: 295 passing in current env (330+ including M6+ modules requiring numpy)
-- **Next**: M5 — Visual UI integration
+- **Milestones**: M0 ✅, M1 ✅, M2 ✅, M3 ✅, M4 ✅ (polished), M5 ✅ (editor engine), M5 ✅ (visual UI)
+- **Tests**: 181 Python (editor+renderer) + 295 collectable; M6+ modules need numpy
+- **Next**: M6 — Speech recognition + word alignment
 
 ## Directory Tree
 ```
 engine/
   core/              ← M2: registry, pipeline, ffmpeg, cache
-  editor/            ← M5: manual caption editor engine
+  editor/            ← M5 ✅: manual caption editor engine
     __init__.py      ← Editor package marker
-    editor.py        ← Editor class (M5 core)
-  renderer/          ← M4: deterministic CWI renderer
+    editor.py        ← Editor class (M5 core) — CRUD, undo/redo, copy/paste, multi-select
+    api.py           ← EditorAPI — transport-agnostic JSON API service layer
+    test_api.py      ← Placeholder for API tests (moved to tests/unit/test_editor_api.py)
+  renderer/          ← M4 ✅: deterministic CWI renderer
     renderer.py      ← CwiRenderer class (deterministic ASS + FFmpeg burn-in)
     styles.py        ← ASS color constants (8-digit BGR), style computation
   rules/             ← colors.py (palette), profile_loader.py (design system JSON)
@@ -40,28 +42,57 @@ engine/
   asr/               ← M6+: speech recognition (needs numpy)
   speech/            ← M6+: speech pipeline (needs numpy)
 frontend/            ← React/TS (editor, timeline, preview, inspector, speaker-panel, export-panel)
-  editor/            ← M5: React components (empty — pending UI integration)
-  timeline/
-  preview/
-  inspector/
-  speaker-panel/
-  export-panel/
+  editor/            ← M5 ✅: React/TypeScript editor UI
+    index.html
+    package.json
+    tsconfig.json
+    tsconfig.node.json
+    vite.config.ts
+    vitest.config.ts
+    src/
+      main.tsx
+      App.tsx          ← Main layout (3-panel)
+      styles/global.css ← Global styles
+      test-setup.ts
+      api/
+        client.ts      ← EditorApiClient (transport-agnostic)
+        client.test.ts ← API client tests (8 tests)
+      components/
+        ProjectSummary.tsx
+        SpeakerPanel.tsx   ← Speaker CRUD + palette
+        EventList.tsx      ← Event listing
+        EventEditor.tsx    ← Event/word/syllable editor (primary panel)
+        InspectorPanel.tsx ← Typography, animation, box inspectors
+        Timeline.tsx       ← Visual timeline tracks
+        Toolbar.tsx        ← Undo/redo, copy/paste, selection
+      types/
+        project.ts       ← TypeScript types mirroring Python schemas
+        editor.ts        ← EditorAPI TypeScript stub
+        project.test.ts  ← Type validation tests (6 tests)
+  timeline/          ← (pending)
+  preview/           ← (pending)
+  inspector/         ← (pending — see EventEditor + InspectorPanel)
+  speaker-panel/     ← (pending — see SpeakerPanel)
+  export-panel/      ← (pending)
 apps/cli/            ← empty
 apps/desktop/        ← empty
 tests/
-  unit/              ← 295 tests (M4: 40, M4+: 55, M5: 55, M0–M3: 145; +35 M6+ requiring numpy)
+  unit/              ← 211 Python tests (editor+renderer), + TypeScript tests in frontend/editor
+    test_editor.py (55 tests): undo/redo, speaker/event/word/syllable CRUD, timing, typography, animation, box, palette, scene overrides, multi-select, copy/paste, build_from_transcript
+    test_editor_api.py (26 tests): EditorAPI all methods — project, undo/redo, speakers, events, words, syllables, timing, typography, animation, box, speaker editor, palette, scene overrides, selection, copy/paste, style, build_from_transcript, error handling
+    test_renderer.py (40 tests): style computation, ASS color conversion, CwiRenderer generation, speaker attribution, FFmpeg commands
+    test_renderer_m4.py (55 tests): read-ahead, word-onset sync, pop animation, SFX/music rules, syllable mode, exception profiles, work area, typography mapping, validation, style-driven rendering, helper functions
     test_foundation.py: colors, typography, project format, schema
     test_ingest.py: proxy, ingest, quick probe, real video
     test_probe.py: ffprobe, hash, captions
     test_proxy.py: proxy creation, dimensions, freshness
     test_scenes.py: shots, scenes, chunking, checkpoint, pipeline
     test_diarization.py: SRT/VTT/TTML/ASS exporters, SpeakerSegment, SpeakerLabel, Diarizer, ActiveSpeakerTracker
-    test_renderer.py (40 tests): style computation, ASS color conversion, CwiRenderer generation, speaker attribution, FFmpeg commands
-    test_renderer_m4.py (55 tests): read-ahead, word-onset sync, pop animation, SFX/music rules, syllable mode, exception profiles, work area, typography mapping, validation, style-driven rendering, helper functions
-    test_editor.py (55 tests): undo/redo, speaker/event/word/syllable CRUD, timing, typography inspector, animation inspector, box inspector, speaker editor, palette, scene overrides, multi-select, copy/paste, build_from_transcript
     test_alignment.py: M6+ (requires numpy)
     test_asr.py: M6+ (requires numpy)
     test_speech_pipeline.py: M6+ (requires numpy)
+  frontend/editor/src/api/client.test.ts (8 tests): API client transport, type validation
+  frontend/editor/src/types/project.test.ts (6 tests): TypeScript type validation
   integration/       ← empty
   fixtures/          ← empty
   audio/             ← empty
@@ -171,6 +202,10 @@ templates/           ← .gitkeep
 ### engine/editor/editor.py
 - `Editor`: Undo/redo history, CRUD (speakers, events, words, syllables), property inspectors (typography, animation, box/work-area), timing adjustments, copy/paste style, multi-select with apply_to_selection, build_from_transcript()
 - `EditAction`: Undo/redo action record (type, before, after, target)
+- Undo/redo properly handles add/remove operations for events, speakers, and words
+
+### engine/editor/api.py
+- `EditorAPI`: Transport-agnostic JSON API wrapping Editor. All methods return `{"success": True, "data": ...}` or `{"error": "..."}`. Covers every Editor method: project, undo/redo, speakers, events, words, syllables, timing, typography, animation, box, speaker editor, palette, scene overrides, selection, copy/paste style, build_from_transcript.
 
 ### engine/renderer/renderer.py
 - `CwiRenderer`: Deterministic ASS generation + FFmpeg burn-in. All M4 visual rules: read-ahead, word-onset sync, pop animation, syllable mode, exception profiles, SFX/music rules, work area positioning, style-driven rendering
@@ -208,7 +243,8 @@ engine.exporters.ttml       ← engine.exporters.base
 engine.diarization.diarizer ← engine.core.ffmpeg, engine.diarization.models
 engine.diarization.models   ← dataclasses (slots)
 engine.active_speaker.active_speaker ← engine.diarization.diarizer, engine.diarization.models
-engine.editor.editor        ← schemas.project, engine.renderer.styles, engine.typography.mapping (Pydantic + stdlib)
+engine.editor.editor        ← schemas.project (Pydantic + stdlib)
+engine.editor.api           ← engine.editor.editor (transport-agnostic wrapper)
 engine.renderer.renderer    ← schemas.project, engine.renderer.styles, engine.core.ffmpeg (Pydantic + subprocess)
 engine.renderer.styles      ← schemas.project (constants)
 ```
