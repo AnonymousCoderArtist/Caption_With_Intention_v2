@@ -96,4 +96,39 @@ This file documents the current build state for easy checkpoint recovery.
 - [x] M3 unit tests (32 tests) — `tests/unit/test_diarization.py`
 - [x] M3 verification script — `scripts/verify_m3.py` (7/7 pass)
 
-## Next: M4 — Deterministic CI renderer
+## ✅ M4 — Deterministic CI renderer
+
+### M4 Completed
+- [x] CwiRenderer — deterministic ASS generation + FFmpeg burn-in
+- [x] Read-ahead layer (white, configurable opacity via event.style)
+- [x] Speaker-colored word overlays (word-onset sync)
+- [x] Pop animation (15% default via event.style.pop_scale)
+- [x] SFX rules (white, bracketed, no color animation)
+- [x] Music rules (white, no word animation)
+- [x] 90% black caption box (corrected to 8-digit ASS BGR format)
+- [x] Lower 20% work area positioning
+- [x] Max two lines enforcement
+- [x] Dynamic box sizing
+- [x] Type size range (3–12%, 5% baseline)
+- [x] Pitch→weight mapping
+- [x] Harmonics→width mapping
+- [x] Off-camera italic attribution
+- [x] Style-driven rendering (pop_scale, read_ahead_opacity from event.style)
+- [x] Syllable mode support (per-syllable overlays with fallback)
+- [x] Exception profile support (attribution/color layer toggles)
+- [x] Speaker validation (warns on unknown speaker IDs)
+- [x] ASS color format corrected to 8-digit BGR (&HE6E6E6E6)
+- [x] M4 unit tests (95 tests: 76 base + 19 new)
+
+### Polishing Improvements (Post-M4 completion)
+- [x] Replaced hardcoded pop_scale (1.15) with event.style.pop_scale
+- [x] Replaced hardcoded read_ahead_opacity (0.90) with event.style.read_ahead_opacity
+- [x] Fixed WHITE_90_PCT from 6-digit to proper 8-digit ASS BGR format
+- [x] Added syllable mode rendering with graceful fallback
+- [x] Added exception profile rendering support
+- [x] Added helper functions (_compute_opacity_color, _format_pop_scale, _build_syllable_overlays)
+- [x] Added speaker validation and warning for unknown IDs
+- [x] Added 19 new tests covering all polished features
+- [x] Fixed existing test assertions for corrected ASS format
+
+## Next: M5 — Full manual editor
