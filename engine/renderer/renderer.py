@@ -90,7 +90,7 @@ def _build_syllable_overlays(
     """
     lines: list[dict] = []
     for word in event.words:
-        syllables = word.get("syllables") if hasattr(word, "get") else None
+        syllables = word.syllables if hasattr(word, "syllables") else None
         if not syllables:
             # Fall back to word-level overlay if no syllable data
             tags: dict[str, str] = {
