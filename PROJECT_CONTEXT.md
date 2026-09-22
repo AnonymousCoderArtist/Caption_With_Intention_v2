@@ -4,23 +4,24 @@
 CWI transforms closed captions into an expressive, accessible experience (color attribution, word-onset sync, intonation mapping). Python engine + React/TS frontend.
 
 ## Branch Status
-- **Branch**: `M2-scene-chunk-engine` (current), `master` (up to date)
-- **Milestones**: M0 ✅, M1 ✅, M2 ✅, M3 ✅ (145 tests passing)
-- **Next**: M4 — Deterministic CI renderer
+- **Branch**: `main` (current), `master` (up to date with origin)
+- **Milestones**: M0 ✅, M1 ✅, M2 ✅, M3 ✅, M4 ✅ (polished), M5 ✅ (editor engine), M5 🔨 (visual UI)
+- **Tests**: 295 passing in current env (330+ including M6+ modules requiring numpy)
+- **Next**: M5 — Visual UI integration
 
 ## Directory Tree
 ```
 engine/
   core/              ← M2: registry, pipeline, ffmpeg, cache
-  active_speaker/    ← M3: diarization PRIMARY, face tracking fallback
-    active_speaker.py ← ActiveSpeakerTracker class
-  alignment/         ← M3+: caption-to-audio alignment
-  animation/         ← M3+: caption animation
-  asr/               ← M3+: speech recognition
-  caption_generation/ ← M3+: caption generation
-  diarization/       ← M3: speaker diarization (PRIMARY)
-    diarizer.py      ← Diarizer class (pluggable backends: ffmpeg_vad, diarize, pyannote)
-    models.py        ← SpeakerSegment, SpeakerLabel (slots dataclasses)
+  editor/            ← M5: manual caption editor engine
+    __init__.py      ← Editor package marker
+    editor.py        ← Editor class (M5 core)
+  renderer/          ← M4: deterministic CWI renderer
+    renderer.py      ← CwiRenderer class (deterministic ASS + FFmpeg burn-in)
+    styles.py        ← ASS color constants (8-digit BGR), style computation
+  rules/             ← colors.py (palette), profile_loader.py (design system JSON)
+  typography/        ← mapping.py: volume_to_size, pitch_to_weight, harmonics_to_width, compute_word_typography
+  audio_analysis/    ← basic.py: estimate_loudness, estimate_pitch, smooth_signal, analyze_audio_chunk
   errors/            ← CWIError, ErrorCategory (13 categories), ProjectCorruptionError
   exporters/         ← M3: SRT/VTT/TTML/ASS exporters
     base.py          ← CaptionExporter base (Plugin-registered)
@@ -34,25 +35,33 @@ engine/
   logging/           ← setup_logging(), JSONFormatter, StageAdapter
   media/             ← probe.py: probe_video(), compute_source_hash(), probe_embedded_captions()
   project/           ← ProjectEngine (create/open/save), format.py (dir structure)
-  rules/             ← colors.py (palette), profile_loader.py (design system JSON)
   scenes/            ← shot detection, scenes, chunking, checkpoints
-  sound_events/      ← empty (M3+)
-  typography/        ← mapping.py: volume_to_size, pitch_to_weight, harmonics_to_width, compute_word_typography
-  validation/        ← empty (M3+)
-  face_tracking/     ← empty (M3+)
-  music/             ← empty (M3+)
-  audio_analysis/    ← basic.py: estimate_loudness, estimate_pitch, smooth_signal, analyze_audio_chunk
-frontend/            ← React/TS (editor, timeline, preview, inspector, speaker-panel, export-panel) — empty
+  alignment/         ← M6+: forced alignment (needs numpy)
+  asr/               ← M6+: speech recognition (needs numpy)
+  speech/            ← M6+: speech pipeline (needs numpy)
+frontend/            ← React/TS (editor, timeline, preview, inspector, speaker-panel, export-panel)
+  editor/            ← M5: React components (empty — pending UI integration)
+  timeline/
+  preview/
+  inspector/
+  speaker-panel/
+  export-panel/
 apps/cli/            ← empty
 apps/desktop/        ← empty
 tests/
-  unit/              ← 145 tests total
-    test_foundation.py (31 tests): colors, typography, project format, schema
-    test_ingest.py (24 tests): proxy, ingest, quick probe, real video
+  unit/              ← 295 tests (M4: 40, M4+: 55, M5: 55, M0–M3: 145; +35 M6+ requiring numpy)
+    test_foundation.py: colors, typography, project format, schema
+    test_ingest.py: proxy, ingest, quick probe, real video
     test_probe.py: ffprobe, hash, captions
     test_proxy.py: proxy creation, dimensions, freshness
-    test_scenes.py (33 tests): shots, scenes, chunking, checkpoint, pipeline
-    test_diarization.py (32+2 tests): SRT/VTT/TTML/ASS exporters, SpeakerSegment, SpeakerLabel, Diarizer (3 backends), ActiveSpeakerTracker
+    test_scenes.py: shots, scenes, chunking, checkpoint, pipeline
+    test_diarization.py: SRT/VTT/TTML/ASS exporters, SpeakerSegment, SpeakerLabel, Diarizer, ActiveSpeakerTracker
+    test_renderer.py (40 tests): style computation, ASS color conversion, CwiRenderer generation, speaker attribution, FFmpeg commands
+    test_renderer_m4.py (55 tests): read-ahead, word-onset sync, pop animation, SFX/music rules, syllable mode, exception profiles, work area, typography mapping, validation, style-driven rendering, helper functions
+    test_editor.py (55 tests): undo/redo, speaker/event/word/syllable CRUD, timing, typography inspector, animation inspector, box inspector, speaker editor, palette, scene overrides, multi-select, copy/paste, build_from_transcript
+    test_alignment.py: M6+ (requires numpy)
+    test_asr.py: M6+ (requires numpy)
+    test_speech_pipeline.py: M6+ (requires numpy)
   integration/       ← empty
   fixtures/          ← empty
   audio/             ← empty
@@ -159,6 +168,20 @@ templates/           ← .gitkeep
 - SCHEMA_VERSION = "ci-project-1", DESIGN_SYSTEM = "caption-with-intention-v1.0"
 - PROJECT_SCHEMA (JSON Schema draft-07)
 
+### engine/editor/editor.py
+- `Editor`: Undo/redo history, CRUD (speakers, events, words, syllables), property inspectors (typography, animation, box/work-area), timing adjustments, copy/paste style, multi-select with apply_to_selection, build_from_transcript()
+- `EditAction`: Undo/redo action record (type, before, after, target)
+
+### engine/renderer/renderer.py
+- `CwiRenderer`: Deterministic ASS generation + FFmpeg burn-in. All M4 visual rules: read-ahead, word-onset sync, pop animation, syllable mode, exception profiles, SFX/music rules, work area positioning, style-driven rendering
+- `_compute_opacity_color(opacity, base_hex)` → ASS color string
+- `_format_pop_scale(scale)` → ASS \fscx/\fscy tag string
+- `_build_syllable_overlays(event, speaker, speaker_color_ass, pop_tag, font_tag)` → list[dict]
+- `_get_exception_toggles(event)` → dict[str, bool]
+
+### engine/renderer/styles.py
+- `WHITE_90_PCT = "&HE6E6E6E6"`, `WHITE_SOLID = "&HFFFFFFFF"`, `BLACK_90_PCT = "&HDE000000"`, `BLACK_SOLID = "&H00000000"` — 8-digit ASS BGR format
+
 ## Dependency Graph
 ```
 engine.scenes.chunking      ← pydantic only
@@ -185,6 +208,9 @@ engine.exporters.ttml       ← engine.exporters.base
 engine.diarization.diarizer ← engine.core.ffmpeg, engine.diarization.models
 engine.diarization.models   ← dataclasses (slots)
 engine.active_speaker.active_speaker ← engine.diarization.diarizer, engine.diarization.models
+engine.editor.editor        ← schemas.project, engine.renderer.styles, engine.typography.mapping (Pydantic + stdlib)
+engine.renderer.renderer    ← schemas.project, engine.renderer.styles, engine.core.ffmpeg (Pydantic + subprocess)
+engine.renderer.styles      ← schemas.project (constants)
 ```
 
 ## Speaker/Character Design Decision
@@ -217,19 +243,23 @@ This means: diarization → confidence check → face tracking only as fallback.
 
 ## Empty Directories (Intended Purpose)
 - engine/active_speaker/ — **M3 DONE**: Active speaker tracking (diarization PRIMARY, face tracking FALLBACK)
-- engine/alignment/ — Caption-to-audio alignment (M3+)
+- engine/alignment/ — Caption-to-audio alignment (M6+, needs numpy)
 - engine/animation/ — Caption animation (M3+)
-- engine/asr/ — Automatic speech recognition (M3+)
+- engine/asr/ — Automatic speech recognition (M6+, needs numpy)
 - engine/caption_generation/ — Caption generation pipeline (M3+)
 - engine/diarization/ — **M3 DONE**: Speaker diarization (PRIMARY) with pluggable backends
+- engine/editor/ — **M5 DONE**: Manual caption editor engine (Editor class, undo/redo, CRUD, copy/paste)
 - engine/exporters/ — **M3 DONE**: SRT/VTT/TTML/ASS export
+- engine/renderer/ — **M4 DONE**: Deterministic CWI renderer (ASS generation, FFmpeg burn-in)
 - engine/validation/ — Validation rules (M3+)
 - engine/face_tracking/ — Face tracking (M3+): FALLBACK when diarization confidence is low
 - engine/music/ — Music analysis (M3+)
 - engine/sound_events/ — Sound event detection (M3+)
+- engine/speech/ — M6+ speech pipeline (needs numpy)
 - apps/cli/ — CLI application
 - apps/desktop/ — Desktop application
-- frontend/editor/, frontend/timeline/, etc. — React components
+- frontend/editor/ — React editor components (M5 UI integration — pending)
+- frontend/timeline/, frontend/preview/, frontend/inspector/, frontend/speaker-panel/, frontend/export-panel/ — React components (pending)
 - tests/integration/ — Integration tests
 - tests/fixtures/ — Test fixtures
 - scripts/.gitkeep, captions/.gitkeep, etc. — Placeholders
