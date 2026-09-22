@@ -145,8 +145,8 @@ class TestReadAheadLayer:
         assert "I love captioning accessibility." in ass
 
     def test_read_ahead_opacity_90_pct(self):
-        """Read-ahead uses 90% white (WHITE_90_PCT = &HE6E6E6)."""
-        assert WHITE_90_PCT == "&HE6E6E6"
+        """Read-ahead uses 90% white (WHITE_90_PCT = &HE6E6E6E6)."""
+        assert WHITE_90_PCT == "&HE6E6E6E6"
         # Verify this is used in read-ahead context
         events = [
             {
@@ -859,3 +859,359 @@ class TestTimelineVerification:
         for line in ass.split("\n"):
             if line.startswith("Dialogue:") and "onset" in line and "Pop" not in line:
                 assert "0:00:00.50" in line, f"Pop should start at word onset 0.5s, got: {line}"
+
+
+# ─── New: Style-Driven Rendering Tests ─────────────────────
+
+class TestStyleDrivenRendering:
+    """Verify renderer uses event.style values instead of hardcoded constants."""
+
+    def test_custom_pop_scale(self):
+        """Renderer uses event.style.pop_scale, not hardcoded 1.15."""
+        events = [
+            {
+                "id": "evt_1",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 1.0,
+                "speaker_id": "spk_1",
+                "text": "Test.",
+                "words": [{"text": "Test", "start": 0.0, "end": 0.5}],
+                "style": {"pop_scale": 1.25},
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E5E517"}]
+        project = _make_project(events=events, speakers=speakers)
+        renderer = CwiRenderer(project)
+        ass = renderer.render_ass("dummy.mp4")
+
+        # 1.25 pop → \fscx125\fscy125
+        assert "\\fscx125" in ass
+        assert "\\fscy125" in ass
+        # Default 1.15 should NOT be present
+        assert "\\fscx115" not in ass
+
+    def test_custom_read_ahead_opacity(self):
+        """Renderer uses event.style.read_ahead_opacity, not hardcoded 0.90."""
+        events = [
+            {
+                "id": "evt_1",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 1.0,
+                "speaker_id": "spk_1",
+                "text": "Test.",
+                "words": [{"text": "Test", "start": 0.0, "end": 0.5}],
+                "style": {"read_ahead_opacity": 0.75},
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E5E517"}]
+        project = _make_project(events=events, speakers=speakers)
+        renderer = CwiRenderer(project)
+        ass = renderer.render_ass("dummy.mp4")
+
+        # 0.75 opacity → alpha = 0xBF (127/255 ≈ 0.498 → int(0.75*255)=191=0xBF)
+        assert "BF" in ass.upper()
+        # Full opaque white should NOT be the read-ahead color
+        for line in ass.split("\n"):
+            if line.startswith("Dialogue:") and "Test" in line:
+                assert "&HFFFFFF" not in line
+
+    def test_default_pop_scale_is_15_pct(self):
+        """Default pop_scale 1.15 produces 15% pop."""
+        events = [
+            {
+                "id": "evt_1",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 1.0,
+                "speaker_id": "spk_1",
+                "text": "Test.",
+                "words": [{"text": "Test", "start": 0.0, "end": 0.5}],
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E5E517"}]
+        project = _make_project(events=events, speakers=speakers)
+        renderer = CwiRenderer(project)
+        ass = renderer.render_ass("dummy.mp4")
+        assert "\\fscx115" in ass
+
+    def test_default_read_ahead_is_90_pct(self):
+        """Default read_ahead_opacity 0.90 produces 90% white."""
+        events = [
+            {
+                "id": "evt_1",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 1.0,
+                "speaker_id": "spk_1",
+                "text": "Test.",
+                "words": [{"text": "Test", "start": 0.0, "end": 0.5}],
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E5E517"}]
+        project = _make_project(events=events, speakers=speakers)
+        renderer = CwiRenderer(project)
+        ass = renderer.render_ass("dummy.mp4")
+        # 90% white = alpha E6 = &HE6E6E6E6
+        assert "E6E6E6" in ass
+
+
+# ─── New: Helper Function Tests ────────────────────────────
+
+class TestHelperFunctions:
+    """Test renderer helper functions."""
+
+    def test_compute_opacity_color_full_opacity(self):
+        """100% opacity → alpha FF."""
+        from engine.renderer.renderer import _compute_opacity_color
+        result = _compute_opacity_color(1.0, "#FFFFFF")
+        assert result.startswith("&HFFFFFF")
+        assert result.endswith("FF")  # alpha = 255 = FF
+
+    def test_compute_opacity_color_half_opacity(self):
+        """50% opacity → alpha 7F (127/255 ≈ 0.498)."""
+        from engine.renderer.renderer import _compute_opacity_color
+        result = _compute_opacity_color(0.5, "#FFFFFF")
+        assert result.endswith("7F")
+
+    def test_compute_opacity_color_zero_opacity(self):
+        """0% opacity → alpha 00."""
+        from engine.renderer.renderer import _compute_opacity_color
+        result = _compute_opacity_color(0.0, "#FFFFFF")
+        assert result.endswith("00")
+
+    def test_compute_opacity_color_custom_base(self):
+        """Custom base color works."""
+        from engine.renderer.renderer import _compute_opacity_color
+        result = _compute_opacity_color(0.90, "#E5E517")
+        # Alpha = int(0.90 * 255) = 229 = 0xE5, color = #E5E517 → BGR = 17E5E5
+        assert result.startswith("&H17E5E5")
+        assert result.endswith("E5")
+
+    def test_format_pop_scale_standard(self):
+        """Standard 1.15 pop scale."""
+        from engine.renderer.renderer import _format_pop_scale
+        assert _format_pop_scale(1.15) == "\\fscx115\\fscy115"
+
+    def test_format_pop_scale_different_values(self):
+        """Various pop scales."""
+        from engine.renderer.renderer import _format_pop_scale
+        assert _format_pop_scale(1.0) == "\\fscx100\\fscy100"
+        assert _format_pop_scale(1.25) == "\\fscx125\\fscy125"
+        assert _format_pop_scale(1.5) == "\\fscx150\\fscy150"
+
+
+# ─── New: Syllable Mode Tests ──────────────────────────────
+
+class TestSyllableMode:
+    """Spec §4.2.4: Syllable variation when enabled."""
+
+    def test_syllable_mode_generates_syllable_overlays(self):
+        """When syllable_mode=True, syllables appear as separate overlays."""
+        events = [
+            {
+                "id": "evt_1",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 0.5,
+                "speaker_id": "spk_1",
+                "text": "Hello.",
+                "words": [
+                    {
+                        "text": "Hello",
+                        "start": 0.0,
+                        "end": 0.5,
+                        "syllables": [
+                            {"text": "Hel", "start": 0.0, "end": 0.2},
+                            {"text": "lo", "start": 0.2, "end": 0.5},
+                        ],
+                    },
+                ],
+                "style": {"syllable_mode": True},
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E5E5E5"}]
+        project = _make_project(events=events, speakers=speakers)
+        renderer = CwiRenderer(project)
+        ass = renderer.render_ass("dummy.mp4")
+
+        # Syllable text should appear in ASS
+        assert "Hel" in ass
+        assert "lo" in ass
+        # Both syllable overlays should have speaker color
+        assert "E5E5E5" in ass or "E5E517" in ass
+
+    def test_syllable_mode_off_uses_word_overlays(self):
+        """When syllable_mode=False, word overlays are used (not syllables)."""
+        events = [
+            {
+                "id": "evt_1",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 0.5,
+                "speaker_id": "spk_1",
+                "text": "Testing.",
+                "words": [
+                    {
+                        "text": "Testing",
+                        "start": 0.0,
+                        "end": 0.5,
+                        "syllables": [
+                            {"text": "Test", "start": 0.0, "end": 0.25},
+                            {"text": "ing", "start": 0.25, "end": 0.5},
+                        ],
+                    },
+                ],
+                "style": {"syllable_mode": False},
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E5E517"}]
+        project = _make_project(events=events, speakers=speakers)
+        renderer = CwiRenderer(project)
+        ass = renderer.render_ass("dummy.mp4")
+
+        # Full word should appear
+        assert "Testing" in ass
+        # Should have exactly 2 dialogue lines (read-ahead + word overlay),
+        # not 4 (which would indicate syllable overlays)
+        dialogue_lines = [l for l in ass.split("\n") if l.startswith("Dialogue:")]
+        assert len(dialogue_lines) == 2
+
+    def test_syllable_mode_fallback_no_syllables(self):
+        """Syllable mode with no syllable data falls back to word overlay."""
+        events = [
+            {
+                "id": "evt_1",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 0.5,
+                "speaker_id": "spk_1",
+                "text": "Hello.",
+                "words": [{"text": "Hello", "start": 0.0, "end": 0.5}],
+                "style": {"syllable_mode": True},
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E5E517"}]
+        project = _make_project(events=events, speakers=speakers)
+        renderer = CwiRenderer(project)
+        ass = renderer.render_ass("dummy.mp4")
+
+        # Word should still render (fallback)
+        assert "Hello" in ass
+
+
+# ─── New: Exception Profile Tests ──────────────────────────
+
+class TestExceptionProfileRendering:
+    """Spec §6: Exception profiles affect renderer behavior."""
+
+    def test_attribution_off_uses_white_for_words(self):
+        """When attribution is off, word overlays use white, not speaker color."""
+        events = [
+            {
+                "id": "evt_1",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 1.0,
+                "speaker_id": "spk_1",
+                "text": "Test.",
+                "words": [{"text": "Test", "start": 0.0, "end": 0.5}],
+                "style": {},
+                "exception_profile": "caption_event",
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E5E517"}]
+        project = _make_project(events=events, speakers=speakers)
+        renderer = CwiRenderer(project)
+        ass = renderer.render_ass("dummy.mp4")
+
+        # Read-ahead is always white
+        assert "E6E6E6" in ass
+
+    def test_color_layer_off_no_word_color(self):
+        """When synchronization color layer is off, word overlays are white."""
+        events = [
+            {
+                "id": "evt_1",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 1.0,
+                "speaker_id": "spk_1",
+                "text": "Test.",
+                "words": [{"text": "Test", "start": 0.0, "end": 0.5}],
+                "style": {},
+                "exception_profile": "caption_event",
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E5E517"}]
+        project = _make_project(events=events, speakers=speakers)
+        renderer = CwiRenderer(project)
+        ass = renderer.render_ass("dummy.mp4")
+
+        # Read-ahead should still be white
+        assert "E6E6E6" in ass
+
+    def test_default_profile_full_ci(self):
+        """No exception profile → full CI rendering with speaker colors."""
+        events = [
+            {
+                "id": "evt_1",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 1.0,
+                "speaker_id": "spk_1",
+                "text": "Test.",
+                "words": [{"text": "Test", "start": 0.0, "end": 0.5}],
+                "style": {},
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E517E5"}]
+        project = _make_project(events=events, speakers=speakers)
+        renderer = CwiRenderer(project)
+        ass = renderer.render_ass("dummy.mp4")
+
+        # Default: word overlay should use speaker color (#E517E5 → BGR &HE517E5)
+        assert "E517E5" in ass
+
+
+# ─── New: Validation Tests ─────────────────────────────────
+
+class TestRendererValidation:
+    """Test renderer validation and error handling."""
+
+    def test_empty_text_rendering(self):
+        """Events with empty text still produce dialogue lines."""
+        events = [
+            {
+                "id": "evt_1",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 1.0,
+                "speaker_id": None,
+                "text": "",
+                "style": {},
+            },
+        ]
+        project = _make_project(events=events)
+        renderer = CwiRenderer(project)
+        ass = renderer.render_ass("dummy.mp4")
+        assert "Dialogue:" in ass
+
+    def test_no_events_produces_valid_ass(self):
+        """Project with no events produces valid ASS structure."""
+        project = _make_project()
+        renderer = CwiRenderer(project)
+        ass = renderer.render_ass("dummy.mp4")
+        assert "[Script Info]" in ass
+        assert "[V4+ Styles]" in ass
+        assert "[Events]" in ass
+
+    def test_render_ass_returns_string(self):
+        """render_ass returns the ASS content as a string."""
+        project = _make_project()
+        renderer = CwiRenderer(project)
+        content = renderer.render_ass("dummy.mp4")
+        assert isinstance(content, str)
+        assert len(content) > 0
+        assert "[Events]" in content

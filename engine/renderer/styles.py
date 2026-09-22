@@ -27,13 +27,11 @@ DEFAULT_MIN_SIZE_PCT = 3.0
 DEFAULT_MAX_SIZE_PCT = 12.0
 
 # ASS color format: &HAABBGGRR (A=alpha, B=blue, G=green, R=red)
-# White: &HFFFFFF (opaque white in ASS BGR)
-# 90% white: alpha = 0x19 (≈10% opacity → 90% transparent → 90% white shows)
-# Actually: 90% opacity white → alpha = 0xFF * 0.9 ≈ 0xE6
-WHITE_90_PCT = "&HE6E6E6"  # 90% opaque white in ASS BGR format
-WHITE_SOLID = "&HFFFFFF"  # Solid white (secondary colour)
-BLACK_90_PCT = "&HDE000000"  # 90% opaque black in ASS BGR format
-BLACK_SOLID = "&H000000"
+# White at 90% opacity: alpha=0xE6 (90%), RGB=white
+WHITE_90_PCT = "&HE6E6E6E6"  # 90% opaque white in ASS BGR format (8-digit)
+WHITE_SOLID = "&HFFFFFFFF"  # Solid white (secondary colour, 8-digit)
+BLACK_90_PCT = "&HDE000000"  # 90% opaque black in ASS BGR format (8-digit)
+BLACK_SOLID = "&H00000000"  # Solid black (8-digit)
 
 
 def hex_to_ass_color(hex_color: str) -> str:

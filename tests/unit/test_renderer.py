@@ -353,7 +353,7 @@ class TestCwiRendererBuildCommand:
 
 class TestStyleConstants:
     def test_white_90_pct(self):
-        assert WHITE_90_PCT == "&HE6E6E6"
+        assert WHITE_90_PCT == "&HE6E6E6E6"
 
     def test_black_90_pct(self):
         assert BLACK_90_PCT == "&HDE000000"
