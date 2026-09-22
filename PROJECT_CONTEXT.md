@@ -49,6 +49,8 @@ frontend/            ← React/TS (editor, timeline, preview, inspector, speaker
     tsconfig.node.json
     vite.config.ts
     vitest.config.ts
+    fonts/
+      RobotoFlex.ttf  ← Custom font (from project font asset)
     src/
       main.tsx
       App.tsx          ← Main layout (3-panel)
