@@ -87,6 +87,30 @@ class Editor:
 
     def _apply_action(self, action: EditAction, undo: bool) -> None:
         """Apply or reverse an edit action."""
+        action_type = action.action_type
+
+        # Handle list-modifying actions
+        if action_type in ("add_event", "add_speaker", "add_word"):
+            if undo:
+                # Undo add = remove element
+                self._reverse_add(action)
+            else:
+                # Redo add = re-add element from after state
+                self._reapply_add(action)
+            self.project.modified_at = self._now_iso()
+            return
+
+        if action_type in ("remove_event", "remove_speaker", "remove_word"):
+            if undo:
+                # Undo remove = re-add element
+                self._reverse_remove(action)
+            else:
+                # Redo remove = remove element again
+                self._reapply_remove(action)
+            self.project.modified_at = self._now_iso()
+            return
+
+        # Standard property-update actions
         state = action.before if undo else action.after
         target = self._find_target(action.target_id)
         if target is None:
@@ -96,6 +120,84 @@ class Editor:
             if hasattr(target, key):
                 setattr(target, key, value)
         self.project.modified_at = self._now_iso()
+
+    def _reapply_add(self, action: EditAction) -> None:
+        """Re-add a previously removed element (redo of add)."""
+        state = action.after
+        if action.action_type == "add_event":
+            event = CaptionEvent(**state)
+            self.project.events.append(event)
+        elif action.action_type == "add_speaker":
+            speaker = Speaker(**state)
+            self.project.speakers.append(speaker)
+        elif action.action_type == "add_word":
+            parts = action.target_id.split("_w_")
+            if len(parts) == 2:
+                event_id, word_text = parts
+                event = self._get_event(event_id)
+                if event:
+                    # Check if word already exists
+                    if not any(w.text == word_text for w in event.words):
+                        event.words.append(
+                            Word(text=word_text, start=0.0, end=0.0)
+                        )
+
+    def _reverse_add(self, action: EditAction) -> None:
+        """Reverse an add action by removing the added element."""
+        if action.action_type == "add_event":
+            self.project.events = [
+                e for e in self.project.events if e.id != action.target_id
+            ]
+        elif action.action_type == "add_speaker":
+            self.project.speakers = [
+                s for s in self.project.speakers if s.id != action.target_id
+            ]
+        elif action.action_type == "add_word":
+            # target_id format: "evt_XXX_w_YYY" or "evt_XXX_w_word_text"
+            parts = action.target_id.split("_w_")
+            if len(parts) == 2:
+                event_id, word_text = parts
+                event = self._get_event(event_id)
+                if event and event.words:
+                    # Try to remove by index first, then by text
+                    try:
+                        idx = int(word_text)
+                        if 0 <= idx < len(event.words):
+                            event.words.pop(idx)
+                    except ValueError:
+                        event.words = [w for w in event.words if w.text != word_text]
+
+    def _reapply_remove(self, action: EditAction) -> None:
+        """Re-remove an element (redo of remove)."""
+        if action.action_type == "remove_event":
+            self.project.events = [
+                e for e in self.project.events if e.id != action.target_id
+            ]
+        elif action.action_type == "remove_speaker":
+            self.project.speakers = [
+                s for s in self.project.speakers if s.id != action.target_id
+            ]
+        elif action.action_type == "remove_word":
+            parts = action.target_id.split("_w_")
+            if len(parts) == 2:
+                event_id, word_text = parts
+                event = self._get_event(event_id)
+                if event:
+                    event.words = [w for w in event.words if w.text != word_text]
+
+    def _reverse_remove(self, action: EditAction) -> None:
+        """Reverse a remove action by re-adding the removed element."""
+        state = action.before
+        if action.action_type == "remove_event":
+            event = CaptionEvent(**state)
+            self.project.events.append(event)
+        elif action.action_type == "remove_speaker":
+            speaker = Speaker(**state)
+            self.project.speakers.append(speaker)
+        elif action.action_type == "remove_word":
+            syllable = state.get("syllable")
+            if syllable and isinstance(syllable, dict):
+                pass  # word-level undo handled via event property restore
 
     def _find_target(self, target_id: str) -> Any:
         """Find a project element by ID."""
