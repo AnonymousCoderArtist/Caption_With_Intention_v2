@@ -84,16 +84,16 @@ export function Timeline({ api, onAction }: TimelineProps) {
   const duration = project?.video?.duration ?? 0;
 
   return (
-    <div className="panel" style={{ marginBottom: "var(--spacing-lg)" }}>
+    <div className="panel" style={{ marginBottom: "var(--sp-5)" }}>
       <h2>
         Timeline
         {duration > 0 && (
           <span
             style={{
-              fontSize: "0.8rem",
+              fontSize: "0.78rem",
               fontWeight: 400,
-              color: "var(--color-text-muted)",
-              marginLeft: "var(--spacing-sm)",
+              color: "var(--text-400)",
+              marginLeft: "var(--sp-2)",
             }}
           >
             {formatTime(duration)}
@@ -106,9 +106,9 @@ export function Timeline({ api, onAction }: TimelineProps) {
         style={{
           display: "flex",
           justifyContent: "space-between",
-          fontSize: "0.7rem",
-          color: "var(--color-text-muted)",
-          padding: "0 0 var(--spacing-xs) 0",
+          fontSize: "0.68rem",
+          color: "var(--text-400)",
+          padding: "0 0 var(--sp-1) 0",
           fontFamily: "var(--font-mono)",
         }}
       >
@@ -140,24 +140,22 @@ export function Timeline({ api, onAction }: TimelineProps) {
               key={event.id}
               event={event}
               projectDuration={duration}
-              onClick={() => {
-                // Will be connected via parent callback
-              }}
+              onClick={() => {}}
             />
           ))}
       </div>
 
       {/* SFX track */}
-      <div className="timeline-track" style={{ height: "24px" }}>
+      <div className="timeline-track" style={{ height: "26px" }}>
         <span
           style={{
             position: "absolute",
             top: "2px",
-            left: "var(--spacing-sm)",
-            fontSize: "0.65rem",
-            color: "var(--color-text-muted)",
+            left: "var(--sp-2)",
+            fontSize: "0.62rem",
+            color: "var(--text-400)",
             textTransform: "uppercase",
-            letterSpacing: "0.05em",
+            letterSpacing: "0.06em",
           }}
         >
           SFX
@@ -175,16 +173,16 @@ export function Timeline({ api, onAction }: TimelineProps) {
       </div>
 
       {/* Music track */}
-      <div className="timeline-track" style={{ height: "24px" }}>
+      <div className="timeline-track" style={{ height: "26px" }}>
         <span
           style={{
             position: "absolute",
             top: "2px",
-            left: "var(--spacing-sm)",
-            fontSize: "0.65rem",
-            color: "var(--color-text-muted)",
+            left: "var(--sp-2)",
+            fontSize: "0.62rem",
+            color: "var(--text-400)",
             textTransform: "uppercase",
-            letterSpacing: "0.05em",
+            letterSpacing: "0.06em",
           }}
         >
           Music
@@ -202,7 +200,7 @@ export function Timeline({ api, onAction }: TimelineProps) {
       </div>
 
       {duration === 0 && (
-        <div style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", marginTop: "var(--spacing-sm)" }}>
+        <div style={{ color: "var(--text-400)", fontSize: "0.82rem", marginTop: "var(--sp-2)" }}>
           Build a project from a transcript or load an existing project to see the timeline.
         </div>
       )}

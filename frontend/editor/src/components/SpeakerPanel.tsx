@@ -1,115 +1,84 @@
 """Speaker management panel — add, edit, remove, assign palette colors."""
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Speaker, SpeakerCategory } from "@/types/project";
+import type { EditorApiClient } from "@/api/client";
 
 interface SpeakerPanelProps {
-  api: any;
+  api: EditorApiClient | any;
   onAction: () => void;
 }
 
-const CATEGORY_COLORS: Record<SpeakerCategory | string, string> = {
-  main: "var(--color-accent)",
-  supporting: "var(--color-bg-tertiary)",
-  minor: "var(--color-border)",
+const CATEGORY_LABELS: Record<string, string> = {
+  main: "Main",
+  supporting: "Supporting",
+  minor: "Minor",
 };
 
 export function SpeakerPanel({ api, onAction }: SpeakerPanelProps) {
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newCategory, setNewCategory] = useState<string>("main");
-  const [newColor, setNewColor] = useState<string>("#E5E517");
-  const [message, setMessage] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState<string>("main");
+  const [color, setColor] = useState<string>("#E5E517");
+  const [msg, setMsg] = useState<string | null>(null);
 
-  const loadSpeakers = async () => {
-    if (!api) return;
-    try {
-      const result = await api.getSpeakers?.();
-      if (result?.success) {
-        setSpeakers(result.data ?? []);
-      }
-    } catch (err) {
-      setMessage(`Error loading speakers: ${err}`);
-    }
+  const load = async () => {
+    const r = await api.getSpeakers?.();
+    if (r?.success) setSpeakers(r.data ?? []);
   };
 
-  const handleAddSpeaker = async () => {
-    if (!newName.trim()) return;
-    if (!api) return;
-    try {
-      const result = await api.addSpeaker({
-        name: newName.trim(),
-        category: newCategory,
-        color: newColor,
-      });
-      if (result?.success) {
-        setNewName("");
-        setShowAddForm(false);
-        setMessage(`Added speaker: ${newName.trim()}`);
-        await loadSpeakers();
-        onAction();
-      } else {
-        setMessage(`Error: ${result?.error}`);
-      }
-      setTimeout(() => setMessage(null), 2000);
-    } catch (err) {
-      setMessage(`Error adding speaker: ${err}`);
+  useEffect(() => { load(); }, [onAction]);
+
+  const add = async () => {
+    if (!name.trim()) return;
+    const r = await api.addSpeaker({ name: name.trim(), category, color });
+    if (r?.success) {
+      setMsg(`Added "${name.trim()}"`);
+      setName("");
+      setShowForm(false);
+      await load();
+      onAction();
+    } else {
+      setMsg(`Error: ${r.error}`);
     }
+    setTimeout(() => setMsg(null), 2200);
   };
 
-  const handleDeleteSpeaker = async (speakerId: string, name: string) => {
-    if (!api) return;
-    try {
-      const result = await api.removeSpeaker(speakerId);
-      if (result?.success) {
-        setMessage(`Removed speaker: ${name}`);
-        await loadSpeakers();
-        onAction();
-      } else {
-        setMessage(`Error: ${result?.error}`);
-      }
-      setTimeout(() => setMessage(null), 2000);
-    } catch (err) {
-      setMessage(`Error removing speaker: ${err}`);
+  const remove = async (id: string, n: string) => {
+    const r = await api.removeSpeaker(id);
+    if (r?.success) {
+      setMsg(`Removed "${n}"`);
+      await load();
+      onAction();
     }
+    setTimeout(() => setMsg(null), 2200);
   };
 
   return (
     <div>
       <h2>Speakers</h2>
 
-      {message && (
-        <div
-          className="success-message"
-          style={{ fontSize: "0.8rem" }}
-        >
-          {message}
-        </div>
-      )}
+      {msg && <div className="success-message" style={{ fontSize: "0.8rem" }}>{msg}</div>}
 
-      <div style={{ marginBottom: "var(--spacing-md)" }}>
-        {!showAddForm ? (
-          <button onClick={() => setShowAddForm(true)}>+ Add Speaker</button>
+      <div style={{ marginBottom: "var(--sp-4)" }}>
+        {!showForm ? (
+          <button onClick={() => setShowForm(true)}>+ Add Speaker</button>
         ) : (
-          <div className="panel" style={{ padding: "var(--spacing-md)" }}>
+          <div className="panel" style={{ padding: "var(--sp-4)" }}>
             <div className="inspector-field">
               <label>Name</label>
               <input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 placeholder="Speaker name"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAddSpeaker();
-                }}
+                autoFocus
+                onKeyDown={(e) => e.key === "Enter" && add()}
               />
             </div>
             <div className="inspector-field">
               <label>Category</label>
-              <select
-                value={newCategory}
-                onChange={(e) => setNewCategory(e.target.value)}
-              >
+              <select value={category} onChange={(e) => setCategory(e.target.value)}>
                 <option value="main">Main</option>
                 <option value="supporting">Supporting</option>
                 <option value="minor">Minor</option>
@@ -119,74 +88,49 @@ export function SpeakerPanel({ api, onAction }: SpeakerPanelProps) {
               <label>Color</label>
               <input
                 type="color"
-                value={newColor}
-                onChange={(e) => setNewColor(e.target.value)}
-                style={{ width: "40px", height: "30px", padding: 0 }}
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                style={{ width: "44px", height: "32px", padding: 0, maxWidth: "unset" }}
               />
             </div>
-            <div style={{ display: "flex", gap: "var(--spacing-sm)", marginTop: "var(--spacing-sm)" }}>
-              <button onClick={handleAddSpeaker}>Save</button>
-              <button onClick={() => setShowAddForm(false)}>Cancel</button>
+            <div style={{ display: "flex", gap: "var(--sp-2)", marginTop: "var(--sp-2)" }}>
+              <button onClick={add}>Save</button>
+              <button className="ghost" onClick={() => setShowForm(false)}>Cancel</button>
             </div>
           </div>
         )}
       </div>
 
       {speakers.length === 0 ? (
-        <div style={{ color: "var(--color-text-muted)" }}>
-          No speakers yet. Add one to get started.
+        <div style={{ color: "var(--text-400)", padding: "var(--sp-5) 0", textAlign: "center" }}>
+          No speakers yet. Add one to begin.
         </div>
       ) : (
         <div>
-          {speakers.map((speaker) => (
+          {speakers.map((s) => (
             <div
-              key={speaker.id}
+              key={s.id}
               className="event-card"
-              style={{ display: "flex", alignItems: "center", gap: "var(--spacing-md)" }}
+              style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)" }}
             >
               <div
-                style={{
-                  width: "24px",
-                  height: "24px",
-                  borderRadius: "50%",
-                  backgroundColor: speaker.color,
-                  flexShrink: 0,
-                  border: "2px solid var(--color-border)",
-                }}
+                className="color-swatch"
+                style={{ backgroundColor: s.color }}
+                title={s.name}
               />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontWeight: 600,
-                    fontSize: "0.9rem",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {speaker.name}
+                <div style={{ fontWeight: 600, fontSize: "0.88rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {s.name}
                 </div>
-                <div style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
-                  {speaker.id}
-                  {speaker.off_camera && " • Off-camera"}
+                <div style={{ fontSize: "0.72rem", color: "var(--text-400)", fontFamily: "var(--font-mono)" }}>
+                  {s.id}
+                  {s.off_camera && " · off-camera"}
                 </div>
               </div>
-              <span
-                className={`badge badge-${speaker.category}`}
-                style={{
-                  backgroundColor: CATEGORY_COLORS[speaker.category],
-                  color: speaker.category === "main" ? "var(--color-bg-primary)" : "inherit",
-                }}
-              >
-                {speaker.category}
+              <span className={`badge badge-${s.category}`}>
+                {CATEGORY_LABELS[s.category] ?? s.category}
               </span>
-              <button
-                onClick={() => handleDeleteSpeaker(speaker.id, speaker.name)}
-                style={{ color: "var(--color-danger)" }}
-                title="Remove speaker"
-              >
-                ✕
-              </button>
+              <button className="ghost" onClick={() => remove(s.id, s.name)} title="Remove" style={{ padding: "var(--sp-1) var(--sp-2)" }}>✕</button>
             </div>
           ))}
         </div>

@@ -13,9 +13,9 @@ export function ProjectSummary({ summary }: ProjectSummaryProps) {
     <div
       style={{
         display: "flex",
-        gap: "var(--spacing-lg)",
-        fontSize: "0.85rem",
-        color: "var(--color-text-secondary)",
+        gap: "var(--sp-5)",
+        fontSize: "0.82rem",
+        color: "var(--text-300)",
       }}
     >
       <span>
