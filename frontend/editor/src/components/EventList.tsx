@@ -1,105 +1,111 @@
-import { useEffect, useState } from "react";
-import type { CaptionEvent, EditorApiClient } from "@/api/client";
+import { useMemo, useState } from "react";
+import type { CaptionEvent, Speaker } from "@/types/project";
+import { EventItem } from "./EventItem";
+import { Icon } from "@/lib/icons";
 
 interface EventListProps {
-  api: EditorApiClient | any;
+  events: CaptionEvent[];
+  speakers: Speaker[];
   selectedEventId: string | null;
-  onSelectEvent: (id: string) => void;
-  onAction: () => void;
+  onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
+  onNew: () => void;
 }
 
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-export function EventList({ api, selectedEventId, onSelectEvent, onAction }: EventListProps) {
-  const [events, setEvents] = useState<CaptionEvent[]>([]);
-
-  useEffect(() => {
-    const load = async () => {
-      const r = await api.getEvents?.();
-      if (r?.success) setEvents(r.data ?? []);
-    };
-    load();
-  }, [api, onAction]);
+export function EventList({
+  events,
+  speakers,
+  selectedEventId,
+  onSelect,
+  onDelete,
+  onNew,
+}: EventListProps) {
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return events;
+    return events.filter(
+      (e) =>
+        e.text.toLowerCase().includes(q) ||
+        e.id.toLowerCase().includes(q) ||
+        e.type.toLowerCase().includes(q) ||
+        speakers.find((s) => s.id === e.speaker_id)?.name.toLowerCase()
+          .includes(q),
+    );
+  }, [events, query, speakers]);
 
   return (
-    <div>
-      <h2>Caption Events</h2>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+      {/* header */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 2px var(--sp-3)",
+        }}
+      >
+        <span
+          className="mono"
+          style={{ fontSize: 10, color: "var(--text-500)", letterSpacing: "0.04em" }}
+        >
+          {events.length} {events.length === 1 ? "event" : "events"}
+        </span>
+        <button className="primary" onClick={onNew} style={{ padding: "6px 12px", fontSize: 11.5 }}>
+          <Icon name="plus" size={13} strokeWidth={2.4} />
+          New
+        </button>
+      </div>
 
-      {events.length === 0 ? (
-        <div style={{ color: "var(--text-400)", fontSize: "0.82rem" }}>
-          No events yet. Create one in the editor.
+      {/* search */}
+      <div className="searchbox" style={{ margin: "0 0 var(--sp-3)" }}>
+        <Icon name="search" size={14} />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search text, speaker, type…"
+          style={{ background: "var(--bg-3)" }}
+        />
+      </div>
+
+      {/* list / empty */}
+      {filtered.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-icon">
+            <Icon name="list" size={24} />
+          </div>
+          <div className="empty-title">
+            {query ? "No matching events" : "No caption events"}
+          </div>
+          <div className="empty-body">
+            {query
+              ? "Try a different search term."
+              : "Build your project from a transcript, or add events by hand."}
+          </div>
+          {!query && (
+            <button className="primary" onClick={onNew} style={{ marginTop: 4 }}>
+              <Icon name="plus" size={14} strokeWidth={2.4} />
+              Create event
+            </button>
+          )}
         </div>
       ) : (
-        <div>
-          {events.map((event) => (
-            <div
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          {filtered.map((event) => (
+            <EventItem
               key={event.id}
-              className="event-card"
-              style={{
-                cursor: "pointer",
-                padding: "var(--sp-3)",
-              }}
-              onClick={() => {
-                onSelectEvent(event.id);
-                onAction();
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "var(--sp-2)",
-                  marginBottom: "var(--sp-1)",
-                }}
-              >
-                <span
-                  className={`badge badge-${event.type}`}
-                  style={{
-                    backgroundColor:
-                      event.type === "dialogue"
-                        ? "var(--accent-bg)"
-                        : event.type === "sound_effect"
-                          ? "var(--warning-bg)"
-                          : event.type === "music"
-                            ? "var(--purple-bg)"
-                            : "rgba(255,255,255,0.05)",
-                    color:
-                      event.type === "dialogue"
-                        ? "var(--accent)"
-                        : event.type === "sound_effect"
-                          ? "var(--warning)"
-                          : event.type === "music"
-                            ? "var(--purple)"
-                            : "var(--text-300)",
-                  }}
-                >
-                  {event.type}
-                </span>
-                <span style={{ fontSize: "0.72rem", color: "var(--text-400)", marginLeft: "auto", fontFamily: "var(--font-mono)" }}>
-                  {event.id}
-                </span>
-              </div>
-
-              <div style={{ fontSize: "0.82rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {event.text || "(empty)"}
-              </div>
-
-              <div style={{ display: "flex", gap: "var(--sp-2)", fontSize: "0.7rem", color: "var(--text-400)", fontFamily: "var(--font-mono)", marginTop: "var(--sp-1)" }}>
-                <span>{formatTime(event.start)}</span>
-                <span>→</span>
-                <span>{formatTime(event.end)}</span>
-              </div>
-
-              {selectedEventId === event.id && (
-                <div style={{ marginTop: "var(--sp-1)", fontSize: "0.72rem", color: "var(--accent)" }}>
-                  ← Selected
-                </div>
-              )}
-            </div>
+              event={event}
+              speakers={speakers}
+              isSelected={selectedEventId === event.id}
+              onSelect={() => onSelect(event.id)}
+              onDelete={() => onDelete(event.id)}
+            />
           ))}
         </div>
       )}

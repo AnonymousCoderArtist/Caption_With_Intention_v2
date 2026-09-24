@@ -570,3 +570,77 @@ class TestBuildFromTranscript:
         project = editor.build_from_transcript([])
         assert len(project.events) == 0
         assert project.video.duration == 0.0
+
+    def test_build_with_precise_word_timing(self):
+        """M6: ASR word timings are used verbatim, not redistributed."""
+        editor = _make_editor()
+        transcript = [
+            {
+                "text": "Hello world",
+                "start": 0.0,
+                "end": 1.0,
+                "source_model": "large-v3-turbo",
+                "confidence": 0.9,
+                "words": [
+                    {
+                        "text": "Hello",
+                        "start": 0.0,
+                        "end": 0.3,
+                        "confidence": 0.95,
+                        "source_model": "large-v3-turbo",
+                        "source_timestamp": 0.0,
+                        "duration": 0.3,  # unknown key must be ignored
+                    },
+                    {
+                        "text": "world",
+                        "start": 0.5,
+                        "end": 0.8,
+                        "confidence": 0.88,
+                        "source_model": "large-v3-turbo",
+                        "source_timestamp": 0.5,
+                    },
+                ],
+            },
+        ]
+        project = editor.build_from_transcript(transcript)
+        event = project.events[0]
+        assert len(event.words) == 2
+        assert event.words[0].start == 0.0
+        assert event.words[0].end == 0.3
+        assert event.words[1].start == 0.5
+        assert event.words[1].end == 0.8
+        # Provenance metadata carried onto event + words (spec §2.2)
+        assert event.source_model == "large-v3-turbo"
+        assert event.confidence == 0.9
+        assert event.words[0].source_model == "large-v3-turbo"
+        assert event.words[0].confidence == 0.95
+        assert event.words[0].source_timestamp == 0.0
+        assert event.review_state.name.lower() in ("pending", "PENDING")
+
+    def test_build_speaker_explicit_id(self):
+        """M6: explicit speaker ids are honored so events can reference
+        pipeline speaker ids."""
+        editor = _make_editor()
+        transcript = [
+            {
+                "text": "Hi there",
+                "start": 0.0,
+                "end": 1.0,
+                "speaker_id": "spk_7",
+            },
+        ]
+        speakers = [{"id": "spk_7", "name": "Woody"}]
+        project = editor.build_from_transcript(
+            transcript, speakers=speakers
+        )
+        assert project.speakers[0].id == "spk_7"
+        assert project.events[0].speaker_id == "spk_7"
+
+    def test_build_speaker_generated_id_still_works(self):
+        editor = _make_editor()
+        transcript = [{"text": "Hi.", "start": 0.0, "end": 1.0}]
+        project = editor.build_from_transcript(
+            transcript, speakers=[{"name": "Buzz"}]
+        )
+        assert project.speakers[0].name == "Buzz"
+        assert project.speakers[0].id.startswith("spk_")
