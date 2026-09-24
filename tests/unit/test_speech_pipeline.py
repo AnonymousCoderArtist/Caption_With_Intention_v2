@@ -14,7 +14,7 @@ class TestSpeechPipeline:
         pipeline = SpeechPipeline()
         assert pipeline.asr_model == "large-v3-turbo"
         assert pipeline.asr_device == "cpu"
-        assert pipeline.diarize_backend == "diarize"
+        assert pipeline.diarize_backend == "nemotron"
         assert pipeline.align_mode == "vad_refinement"
         assert pipeline.language == "en"
 
@@ -98,7 +98,7 @@ class TestSpeechPipeline:
         pipeline = SpeechPipeline()
         status = pipeline.get_status()
         assert status["asr_model"] == "large-v3-turbo"
-        assert status["diarize_backend"] == "diarize"
+        assert status["diarize_backend"] == "nemotron"
         assert status["asr_loaded"] is False
         assert "aligner_loaded" in status
 
@@ -136,7 +136,7 @@ def _fake_pipeline_result() -> dict:
         ],
         "speaker_count": 2,
         "asr_model": "large-v3-turbo",
-        "diarize_backend": "diarize",
+        "diarize_backend": "nemotron",
         "words_attributed": 3,
         "corrections": None,
     }

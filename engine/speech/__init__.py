@@ -12,7 +12,7 @@ Usage:
 
     pipeline = SpeechPipeline(
         asr_model="large-v3-turbo",
-        diarize_backend="diarize",
+        diarize_backend="nemotron",
     )
     result = pipeline.run("video.mp4")
     for word in result.words:
