@@ -16,3 +16,14 @@ venv/
 .coverage
 htmlcov/
 .vtx/
+*.egg-info/
+captions.cwi.ass
+
+# Nemotron 3 Diarization CPU benchmark (see tools/nemotron-bench/RESULTS.md)
+tools/nemotron-bench/audio.cpp/
+tools/nemotron-bench/models/
+tools/nemotron-bench/bench/
+
+# Local test media (large third-party clip + generated proxy)
+proxy.mp4
+vidssave.com*.mp4
