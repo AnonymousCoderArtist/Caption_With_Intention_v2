@@ -1,0 +1,37 @@
+graph TD
+    A["📹 Source Video"] --> B["M4 CwiRenderer"]
+
+    subgraph B["CwiRenderer Pipeline"]
+        direction TB
+        B1["Project Data<br/>events, speakers, words"] --> B2["Event Type Router"]
+        B2 --> |"dialogue / overlap / custom"| B3["Synchronization Engine"]
+        B2 --> |"sound_effect"| B4["SFX Renderer"]
+        B2 --> |"music"| B5["Music Renderer"]
+    end
+
+    subgraph S ["Synchronization Engine"]
+        direction TB
+        S1["Read-Ahead Layer<br/>Full sentence, white, 90% opacity"] --> S2["Word-Onset Color Sync"]
+        S2 --> S3["Pop Animation<br/>15% scale at word start"]
+        S3 --> S4["Max 2 Lines Enforcement"]
+        S4 --> S5["Dynamic Box Sizing"]
+    end
+
+    subgraph I ["Inject ASS Tags<br/>(after export, no double-escape)"]
+        I1["Plain text + tag metadata"] --> I2["AssExporter"]
+        I2 --> I3["Inject override tags"]
+        I3 --> I4["Final ASS output"]
+    end
+
+    B --> I
+    S --> I
+    B4 --> I
+    B5 --> I
+
+    I4 --> C["ASS Header<br/>90% black box<br/>Lower 20% work area"]
+    C --> D["FFmpeg Burn-in"]
+    D --> E["🎬 Output Video<br/>with CI captions"]
+
+    style S fill:#1a1a2e,stroke:#e5e517,stroke-width:2,color:#fff
+    style I fill:#16213e,stroke:#17e5e5,stroke-width:2,color:#fff
+    style B fill:#0f3460,stroke:#e5e517,stroke-width:2,color:#fff
