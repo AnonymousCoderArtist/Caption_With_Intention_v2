@@ -1,0 +1,72 @@
+{
+  "design_system": "caption-with-intention-v1.0",
+  "version": "1.0.0",
+  "description": "Caption With Intention V1.0 Design System Profile",
+  "typeface": {
+    "family": "Roboto Flex",
+    "font_file": "fonts/RobotoFlex.ttf",
+    "size_unit": "percent_screen_height",
+    "baseline_size_pct": 5.0,
+    "min_size_pct": 3.0,
+    "max_size_pct": 12.0,
+    "baseline_weight": 400,
+    "baseline_width": 100,
+    "pitch_range": {
+      "low_heavy": {"freq_hz": [80, 160], "weight": "600-700", "width": "110-120"},
+      "baseline": {"freq_hz": [160, 200], "weight": 400, "width": 100},
+      "high_light": {"freq_hz": [200, 400], "weight": "300-350", "width": "85-95"}
+    }
+  },
+  "synchronization": {
+    "read_ahead_opacity": 0.90,
+    "color_sync_on_word_onset": true,
+    "pop_scale": 1.15,
+    "pop_easing": "ease-out",
+    "pop_duration_ms": 150,
+    "syllable_mode_available": true,
+    "default_word_mode": true
+  },
+  "caption_box": {
+    "color": "#000000",
+    "opacity": 0.90,
+    "max_lines": 2,
+    "padding_pct": 2.0,
+    "dynamic_sizing": true
+  },
+  "work_area": {
+    "position": "bottom",
+    "height_pct": 20.0,
+    "safe_margin": {"bottom": 3.0, "left": 3.0, "right": 3.0}
+  },
+  "colors": {
+    "main": {
+      "yellow": "#E5E517",
+      "cyan": "#17E5E5",
+      "red": "#E51717",
+      "orange": "#E58017",
+      "green": "#17E517",
+      "pink": "#E517E5"
+    },
+    "supporting": [
+      "#E85C2E", "#47C2EB", "#EBC247", "#5E82ED", "#C2EB47", "#8C6BED",
+      "#82ED5E", "#CC6BED", "#47EB70", "#EB47C2", "#5EEDC9", "#ED5E82"
+    ]
+  },
+  "speaker_categories": ["main", "supporting", "minor"],
+  "off_camera": {
+    "enabled": true,
+    "italic": true,
+    "same_color_as_speaker": true
+  },
+  "exceptions": {
+    "attribution_colors": true,
+    "synchronization_color": true,
+    "pop_animation": true,
+    "variable_size": true,
+    "pitch_weight": true,
+    "harmonic_width": true,
+    "sound_effect_animation": true,
+    "caption_box_breakout": false,
+    "roman_italic_override": false
+  }
+}
