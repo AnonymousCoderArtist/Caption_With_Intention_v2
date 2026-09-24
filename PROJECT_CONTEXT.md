@@ -4,10 +4,11 @@
 CWI transforms closed captions into an expressive, accessible experience (color attribution, word-onset sync, intonation mapping). Python engine + React/TS frontend.
 
 ## Branch Status
-- **Branch**: `main` (current), `master` (up to date with origin)
-- **Milestones**: M0 ✅, M1 ✅, M2 ✅, M3 ✅, M4 ✅ (polished), M5 ✅ (editor engine), M5 ✅ (visual UI)
-- **Tests**: 181 Python (editor+renderer) + 295 collectable; M6+ modules need numpy
-- **Next**: M6 — Speech recognition + word alignment
+- **Branch**: `master`
+- **Milestones**: M0 ✅, M1 ✅, M2 ✅, M3 ✅, M4 ✅ (polished), M5 ✅ (editor engine + visual UI), M6 ✅ (ASR + word alignment)
+- **Tests**: 388 Python + 19 frontend (all green via `uv run pytest`)
+- **Tooling**: uv manages the venv, lockfile (`uv.lock`), and all Python commands (`uv sync`, `uv run`)
+- **Next**: M7 — Speaker diarization (spec §M7; default backend is now Nemotron 3 Diarization via audio.cpp — 2026-09-24; cross-chunk identity reconciliation + spec exit criteria still to close)
 
 ## Directory Tree
 ```
@@ -38,9 +39,9 @@ engine/
   media/             ← probe.py: probe_video(), compute_source_hash(), probe_embedded_captions()
   project/           ← ProjectEngine (create/open/save), format.py (dir structure)
   scenes/            ← shot detection, scenes, chunking, checkpoints
-  alignment/         ← M6+: forced alignment (needs numpy)
-  asr/               ← M6+: speech recognition (needs numpy)
-  speech/            ← M6+: speech pipeline (needs numpy)
+  alignment/         ← M6 ✅: aligner.py (VAD refinement: vectorized RMS, adaptive threshold, short-silence merging, ffmpeg video extraction; forced: wav2vec2 CTC span via `gpu` extra), models.py
+  asr/               ← M6 ✅: transcriber.py (faster-whisper, lazy-loaded), corrector.py (rule-based transcript correction, gap-aware), models.py
+  speech/            ← M6 ✅: pipeline.py (concurrent ASR + diarization + correction; O(n+m) speaker matching; build_editor_payload → editor)
 frontend/            ← React/TS (editor, timeline, preview, inspector, speaker-panel, export-panel)
   editor/            ← M5 ✅: React/TypeScript editor UI
     index.html
@@ -79,8 +80,8 @@ frontend/            ← React/TS (editor, timeline, preview, inspector, speaker
 apps/cli/            ← empty
 apps/desktop/        ← empty
 tests/
-  unit/              ← 211 Python tests (editor+renderer), + TypeScript tests in frontend/editor
-    test_editor.py (55 tests): undo/redo, speaker/event/word/syllable CRUD, timing, typography, animation, box, palette, scene overrides, multi-select, copy/paste, build_from_transcript
+  unit/              ← 385 Python tests, + TypeScript tests in frontend/editor
+    test_editor.py (58 tests): undo/redo, speaker/event/word/syllable CRUD, timing, typography, animation, box, palette, scene overrides, multi-select, copy/paste, build_from_transcript (incl. M6 precise-word-timing + provenance)
     test_editor_api.py (26 tests): EditorAPI all methods — project, undo/redo, speakers, events, words, syllables, timing, typography, animation, box, speaker editor, palette, scene overrides, selection, copy/paste, style, build_from_transcript, error handling
     test_renderer.py (40 tests): style computation, ASS color conversion, CwiRenderer generation, speaker attribution, FFmpeg commands
     test_renderer_m4.py (55 tests): read-ahead, word-onset sync, pop animation, SFX/music rules, syllable mode, exception profiles, work area, typography mapping, validation, style-driven rendering, helper functions
@@ -90,12 +91,13 @@ tests/
     test_proxy.py: proxy creation, dimensions, freshness
     test_scenes.py: shots, scenes, chunking, checkpoint, pipeline
     test_diarization.py: SRT/VTT/TTML/ASS exporters, SpeakerSegment, SpeakerLabel, Diarizer, ActiveSpeakerTracker
-    test_alignment.py: M6+ (requires numpy)
-    test_asr.py: M6+ (requires numpy)
-    test_speech_pipeline.py: M6+ (requires numpy)
+    test_alignment.py (16 tests): M6 ✅ Aligner config + VAD refinement on real (ffmpeg-generated) audio
+    test_asr.py (12 tests): M6 ✅ ASR models + Transcriber config/lazy-load
+    test_corrector.py (13 tests): M6 ✅ transcript correction rules + audit log
+    test_speech_pipeline.py (15 tests): M6 ✅ speaker matching, correction in run(), build_editor_payload
   frontend/editor/src/api/client.test.ts (8 tests): API client transport, type validation
   frontend/editor/src/types/project.test.ts (6 tests): TypeScript type validation
-  integration/       ← empty
+  integration/       ← M6: test_m6_pipeline_to_renderer.py (3 tests: ASR→correction→editor→renderer end-to-end, stubbed ASR/diarization)
   fixtures/          ← empty
   audio/             ← empty
   timing/            ← empty
@@ -209,6 +211,35 @@ templates/           ← .gitkeep
 ### engine/editor/api.py
 - `EditorAPI`: Transport-agnostic JSON API wrapping Editor. All methods return `{"success": True, "data": ...}` or `{"error": "..."}`. Covers every Editor method: project, undo/redo, speakers, events, words, syllables, timing, typography, animation, box, speaker editor, palette, scene overrides, selection, copy/paste style, build_from_transcript.
 
+### engine/asr/transcriber.py + models.py
+- `Transcriber(model="large-v3-turbo", device, compute_type, ...)`: faster-whisper loaded lazily in `_load()` (import-safe); `transcribe()` → `TranscriptionResult` (segments + word-level timestamps/confidence); `transcribe_stream()` chunks long video via ffmpeg (spec §9: 30s chunks, 2s overlap)
+- `Word` / `Segment` / `TranscriptionResult`: dataclasses with `to_dict()`
+
+### engine/asr/corrector.py (M6 — transcript correction)
+- `TranscriptCorrector(min_confidence=0.5, remove_repeats=True, remove_empty=True, max_repeat_gap=0.25)`: rule-based, no ML; `correct(words) → CorrectionReport` (cleaned words + audit log with original/proposed/reason/rule_id per spec §2.2)
+- Rules: `repeat-collapse` (ASR stutter — only when the duplicate is within `max_repeat_gap` seconds; "no ... no" with a long gap is kept as intentional), `empty-drop`, `low-confidence` (flag only, never rewords; confidence=0 = "no data", not flagged)
+
+### engine/alignment/aligner.py + models.py (M6 — word alignment)
+- `Aligner(audio_path, mode="vad_refinement"|"forced", min_silence_duration=0.15, hop_length=10ms, sample_rate=16000)`
+- Audio handling: WAV read via soundfile; mp4/mp3/... extracted to a temp 16 kHz mono WAV via ffmpeg (`cleanup()` removes it); non-16 kHz resampled with linear interpolation
+- VAD refinement (default, always available): vectorized per-frame RMS (reshape, ~17x faster than the old Python loop on 10-min audio), adaptive threshold (`0.1 x p95(energies)` — works on quiet and loud recordings alike), silences shorter than `min_silence_duration` merged (a 50ms dip is not a word boundary), start snaps forward to the next onset / end snaps back to the silence-run onset
+- Forced mode: wav2vec2 CTC posterior span — first/last non-blank feature frames after duplicate collapse give the word's true acoustic extent (`ctc_word_boundaries()`, pure numpy, unit-tested without torch); requires `uv sync --extra gpu`; falls back to VAD refinement if unavailable
+- `AlignedWord` (Word + phonemes, alignment_confidence, boundary_type), `AlignmentResult` (confidence stats, boundary_counts)
+
+### engine/diarization/diarizer.py + nemotron.py (M7 — default backend: Nemotron 3 Diarization)
+- `Diarizer(backend="nemotron")` — DEFAULT. NVIDIA Nemotron 3 Diarization (~100M-param open-weights transformer, OpenMDW-1.1, released 2026-09-23) run through the audio.cpp CLI (`audiocpp_cli --task diar --family nemotron_3_diar`, CPU backend). Up to 8 speakers, overlap-aware, real per-turn confidence (0–1)
+- `engine.diarization.nemotron` — resolution + IO: `resolve_cli()` (kwarg → `CWI_AUDIOCPP_CLI` env → PATH → dev build under `tools/nemotron-bench`), `ensure_model()` (one-time ~102 MB Q8_0 GGUF download from Hugging Face into `~/.cache/caption_with_intention/models/`, then offline), `parse_turns_file()` (audio.cpp `--turns-out` JSON → `SpeakerSegment`; start_sample/end_sample ÷ 16000 → seconds), `run_diarization()` (subprocess + timeout `max(180, 120 + 0.75×duration)`)
+- Graceful degradation: missing CLI / model / download failure / CLI error → falls back to `ffmpeg_vad` (never crashes)
+- `_prepare_16k_wav()` shared by nemotron + diarize backends (existing 16 kHz WAV used in place; else ffmpeg extraction; non-16 kHz WAVs re-extracted)
+- `backend="diarize"` — old default (Silero VAD + 5-dim audio fingerprint, zero-dependency), now an opt-in fallback
+- Measured on 4-core / 8 GB CPU: ~1 min per 10-min chunk, peak RSS ~460 MB (`tools/nemotron-bench/RESULTS.md`; repro via `tools/nemotron-bench/run_bench.sh`)
+- Dev assets (gitignored): `tools/nemotron-bench/` — audio.cpp source+build, GGUF weights, bench WAVs, results
+
+### engine/speech/pipeline.py (M6 — pipeline + editor handoff)
+- `SpeechPipeline(asr_model, diarize_backend, align_mode, correct_transcript=True, min_confidence=0.5, ...)`: ASR + diarization run concurrently (ThreadPoolExecutor), O(n+m) two-pointer speaker matching (was O(n*m); ties keep earliest-listed segment — verified against a brute-force reference), then rule-based correction
+- `run()` → `{transcription, diarization_segments, corrections, speaker_count, ...}`; `run_with_alignment()` adds the Aligner pass
+- `build_editor_payload(result)` → `{"transcript", "speakers"}` for `EditorApi.build_from_transcript()` — segment→word grouping is O(log W) per segment via bisect; precise word timing + provenance survive into the editor project (M6 exit criteria, verified by tests/integration/test_m6_pipeline_to_renderer.py)
+
 ### engine/renderer/renderer.py
 - `CwiRenderer`: Deterministic ASS generation + FFmpeg burn-in. All M4 visual rules: read-ahead, word-onset sync, pop animation, syllable mode, exception profiles, SFX/music rules, work area positioning, style-driven rendering
 - `_compute_opacity_color(opacity, base_hex)` → ASS color string
@@ -242,13 +273,20 @@ engine.exporters.srt        ← engine.exporters.base
 engine.exporters.vtt        ← engine.exporters.base
 engine.exporters.ass        ← engine.exporters.base
 engine.exporters.ttml       ← engine.exporters.base
-engine.diarization.diarizer ← engine.core.ffmpeg, engine.diarization.models
+engine.diarization.diarizer ← engine.core.ffmpeg, engine.diarization.models, engine.diarization.nemotron
+engine.diarization.nemotron ← stdlib only (subprocess + urllib)
 engine.diarization.models   ← dataclasses (slots)
 engine.active_speaker.active_speaker ← engine.diarization.diarizer, engine.diarization.models
 engine.editor.editor        ← schemas.project (Pydantic + stdlib)
 engine.editor.api           ← engine.editor.editor (transport-agnostic wrapper)
 engine.renderer.renderer    ← schemas.project, engine.renderer.styles, engine.core.ffmpeg (Pydantic + subprocess)
 engine.renderer.styles      ← schemas.project (constants)
+engine.asr.models           ← dataclasses (self-contained)
+engine.asr.transcriber      ← stdlib; faster_whisper LAZY (asr extra)
+engine.asr.corrector        ← engine.asr.models (stdlib only)
+engine.alignment.models     ← engine.asr.models (dataclasses)
+engine.alignment.aligner    ← numpy, soundfile; torch/transformers LAZY (forced mode only, gpu extra)
+engine.speech.pipeline      ← engine.asr.*, engine.diarization.*, engine.alignment.*
 ```
 
 ## Speaker/Character Design Decision
@@ -281,11 +319,11 @@ This means: diarization → confidence check → face tracking only as fallback.
 
 ## Empty Directories (Intended Purpose)
 - engine/active_speaker/ — **M3 DONE**: Active speaker tracking (diarization PRIMARY, face tracking FALLBACK)
-- engine/alignment/ — Caption-to-audio alignment (M6+, needs numpy)
+- engine/alignment/ — **M6 DONE**: ASR word refinement (VAD refinement always available; forced wav2vec2 via `gpu` extra)
 - engine/animation/ — Caption animation (M3+)
-- engine/asr/ — Automatic speech recognition (M6+, needs numpy)
+- engine/asr/ — **M6 DONE**: faster-whisper transcription (lazy) + rule-based transcript correction
 - engine/caption_generation/ — Caption generation pipeline (M3+)
-- engine/diarization/ — **M3 DONE**: Speaker diarization (PRIMARY) with pluggable backends
+- engine/diarization/ — **M3 DONE / M7 DEFAULT BACKEND**: Speaker diarization (PRIMARY), default = Nemotron 3 Diarization (open-weight, via audio.cpp CPU), pluggable backends
 - engine/editor/ — **M5 DONE**: Manual caption editor engine (Editor class, undo/redo, CRUD, copy/paste)
 - engine/exporters/ — **M3 DONE**: SRT/VTT/TTML/ASS export
 - engine/renderer/ — **M4 DONE**: Deterministic CWI renderer (ASS generation, FFmpeg burn-in)
@@ -293,7 +331,7 @@ This means: diarization → confidence check → face tracking only as fallback.
 - engine/face_tracking/ — Face tracking (M3+): FALLBACK when diarization confidence is low
 - engine/music/ — Music analysis (M3+)
 - engine/sound_events/ — Sound event detection (M3+)
-- engine/speech/ — M6+ speech pipeline (needs numpy)
+- engine/speech/ — **M6 DONE**: concurrent ASR + diarization + correction pipeline; build_editor_payload() → editor handoff
 - apps/cli/ — CLI application
 - apps/desktop/ — Desktop application
 - frontend/editor/ — React editor components (M5 UI integration — pending)
@@ -302,19 +340,28 @@ This means: diarization → confidence check → face tracking only as fallback.
 - tests/fixtures/ — Test fixtures
 - scripts/.gitkeep, captions/.gitkeep, etc. — Placeholders
 
+## Tooling — uv (authoritative)
+All Python tooling goes through uv: venv (`.venv/`), lockfile (`uv.lock`), installs, test and script runs.
+```bash
+uv sync --extra dev                  # create .venv + install (creates uv.lock)
+uv sync --extra dev --extra asr      # + faster-whisper
+uv sync --extra dev --extra diarization
+uv sync --extra dev --extra gpu      # + torch, torchaudio, transformers (forced alignment)
+```
+
 ## Test Commands
 ```bash
-# Full test suite
-python -m pytest tests/ -x -q
-
-# Verification scripts
-python scripts/verify_m0.py
-python scripts/verify_m1.py
-python scripts/verify_m2.py
-python scripts/verify_m3.py
+uv run pytest tests/ -q              # full suite (388 tests)
+uv run pytest tests/unit/ -v
+uv run pytest tests/integration/ -v
+uv run ruff check engine/            # lint (dev extra; [tool.ruff.lint] ignores UP045 to keep Optional[...] style)
+uv run python scripts/verify_m0.py
 ```
 
 ## pyproject.toml Key Dependencies
-pydantic>=2.0, ffmpeg-python>=0.2, numpy>=1.24, scipy>=1.11, soundfile>=0.12, librosa>=0.10, whisper>=20231117, pyyaml>=6.0, click>=8.1, rich>=13.0, httpx>=0.25
+Core: pydantic>=2.0, numpy>=1.24, soundfile>=0.12
 Dev: pytest>=7.4, pytest-asyncio>=0.21, pytest-cov>=4.1, ruff>=0.1, mypy>=1.8
-GPU: torch>=2.0, torchaudio>=2.0
+asr: faster-whisper>=1.0
+diarization: pyannote.audio>=3.0, silero-vad>=0.3
+gpu: torch>=2.0, torchaudio>=2.0, transformers>=4.40
+(Past unused hard deps — whisper, scipy, librosa, ffmpeg-python, pyyaml, click, rich, httpx — were removed in the uv migration; the code never imported them. ffmpeg is a system binary, not a Python dep.)

@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
+from engine.diarization import nemotron
 from engine.exporters.srt import SrtExporter
 from engine.exporters.vtt import VttExporter
 from engine.exporters.ass import AssExporter
@@ -247,11 +251,15 @@ class TestDiarizer:
         diarizer = Diarizer()
         assert diarizer.min_speaker_duration == 0.5
         assert diarizer.min_confidence == 0.5
-        assert diarizer.backend == "ffmpeg_vad"
+        assert diarizer.backend == "nemotron"
 
     def test_diarizer_creation_with_backend(self):
         """Test diarizer can select different backends."""
-        # Lightweight backend (user downloads model separately)
+        # Nemotron backend (default — open-weight model, one-time download)
+        d = Diarizer(backend="nemotron")
+        assert d.backend == "nemotron"
+
+        # Lightweight backend (zero-dependency fallback)
         d = Diarizer(backend="diarize")
         assert d.backend == "diarize"
 
@@ -325,6 +333,136 @@ class TestDiarizer:
         assert d["min_speaker_duration"] == 0.5
         assert len(d["segments"]) == 1
         assert d["segments"][0]["source"] == "test"
+
+
+# ─── Nemotron Backend Tests ──────────────────────────────────────────
+
+
+class TestNemotronBackend:
+    """NVIDIA Nemotron 3 Diarization backend (default)."""
+
+    @staticmethod
+    def _write_turns(tmp_path, rows, wrapper=None):
+        p = tmp_path / "turns.json"
+        payload = {"speaker_turns": rows} if wrapper == "dict" else rows
+        p.write_text(json.dumps(payload))
+        return str(p)
+
+    def test_parse_turns_list(self, tmp_path):
+        rows = [
+            {"start_sample": 32000, "end_sample": 64000,
+             "speaker_id": "speaker_0", "confidence": 0.98},
+            {"start_sample": 80000, "end_sample": 112000,
+             "speaker_id": "speaker_1", "confidence": 0.87},
+        ]
+        segs = nemotron.parse_turns_file(self._write_turns(tmp_path, rows))
+        assert len(segs) == 2
+        assert segs[0].start == 2.0 and segs[0].end == 4.0
+        assert segs[0].speaker_id == "speaker_0"
+        assert segs[0].confidence == 0.98
+        assert segs[0].source == "nemotron"
+        assert segs[1].start == 5.0 and segs[1].end == 7.0
+        assert segs[1].speaker_id == "speaker_1"
+
+    def test_parse_turns_dict_wrapper(self, tmp_path):
+        rows = [{"start_sample": 1600, "end_sample": 3200,
+                 "speaker_id": "s", "confidence": 0.5}]
+        segs = nemotron.parse_turns_file(
+            self._write_turns(tmp_path, rows, wrapper="dict"))
+        assert len(segs) == 1 and segs[0].start == 0.1
+
+    def test_parse_turns_skips_bad_rows(self, tmp_path):
+        rows = [
+            {"start_sample": 100, "end_sample": 200, "speaker_id": "a"},
+            {"start_sample": 5000, "end_sample": 1000},
+            "garbage",
+            {"start_sample": "xx", "end_sample": 10, "speaker_id": "b"},
+            {"start_sample": 16000, "end_sample": 48000,
+             "speaker_id": "c", "confidence": 1.7},
+        ]
+        segs = nemotron.parse_turns_file(self._write_turns(tmp_path, rows))
+        assert [s.speaker_id for s in segs] == ["a", "c"]
+        assert segs[0].confidence == 0.0
+        assert segs[1].confidence == 1.0  # clamped to [0, 1]
+
+    def test_parse_empty_turns(self, tmp_path):
+        assert nemotron.parse_turns_file(self._write_turns(tmp_path, [])) == []
+
+    def test_resolve_cli_explicit_missing(self):
+        assert nemotron.resolve_cli("/nonexistent/audiocpp_cli") is None
+
+    def test_resolve_cli_explicit_existing(self, tmp_path, monkeypatch):
+        fake = tmp_path / "audiocpp_cli"
+        fake.write_text("#!/bin/sh\n")
+        # explicit kwarg wins over env
+        monkeypatch.setenv(nemotron.DEFAULT_ENV_CLI, "/elsewhere/audiocpp_cli")
+        assert nemotron.resolve_cli(str(fake)) == fake
+
+    def test_resolve_cli_env(self, tmp_path, monkeypatch):
+        fake = tmp_path / "audiocpp_cli"
+        fake.write_text("#!/bin/sh\n")
+        monkeypatch.setenv(nemotron.DEFAULT_ENV_CLI, str(fake))
+        assert nemotron.resolve_cli() == fake
+
+    def test_default_model_path_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv(nemotron.DEFAULT_ENV_MODEL, "/tmp/whatever.gguf")
+        assert nemotron.default_model_path() == Path("/tmp/whatever.gguf")
+        # kwarg beats env
+        assert nemotron.default_model_path("/other.gguf") == Path("/other.gguf")
+
+    def test_ensure_model_existing(self, tmp_path):
+        m = tmp_path / "model.gguf"
+        m.write_bytes(b"x" * 100)
+        assert nemotron.ensure_model(str(m)) == m
+
+    def test_ensure_model_missing_no_download(self, tmp_path):
+        assert nemotron.ensure_model(
+            str(tmp_path / "nope.gguf"), auto_download=False
+        ) is None
+
+    def test_nemotron_falls_back_when_cli_missing(self, tmp_path):
+        """Missing CLI must degrade to the FFmpeg VAD fallback, not crash."""
+        import subprocess
+        audio = str(tmp_path / "test.wav")
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-f", "lavfi", "-i",
+                 "sine=frequency=440:duration=1", audio],
+                capture_output=True, timeout=15,
+            )
+        except FileNotFoundError:
+            pytest.skip("FFmpeg not available")
+        d = Diarizer(backend="nemotron", min_confidence=0.0,
+                     cli_path="/nonexistent/audiocpp_cli")
+        segments = d.run(audio)
+        assert isinstance(segments, list) and segments
+        assert all(s.source in ("ffmpeg_vad", "hardcoded_fallback")
+                   for s in segments)
+
+    def test_nemotron_real_cli_smoke(self, tmp_path):
+        """End-to-end Nemotron run — skipped unless the dev build + model +
+        a real multi-speaker sample are all present on this machine."""
+        import subprocess
+        root = Path(__file__).resolve().parents[2]
+        cli = root / "tools/nemotron-bench/audio.cpp/build/bin/audiocpp_cli"
+        model = root / "tools/nemotron-bench/models/nemotron-3-diarization-q8_0.gguf"
+        audio = root / "tools/nemotron-bench/bench/test10min.wav"
+        if not (cli.is_file() and model.is_file() and audio.is_file()):
+            pytest.skip("Nemotron dev build / model / sample not available")
+        out = tmp_path / "turns.json"
+        r = subprocess.run(
+            [str(cli), "--task", "diar", "--family", "nemotron_3_diar",
+             "--model", str(model), "--backend", "cpu", "--threads", "4",
+             "--audio", str(audio), "--turns-out", str(out)],
+            capture_output=True, text=True, timeout=300,
+        )
+        assert r.returncode == 0, r.stderr[-500:]
+        segs = nemotron.parse_turns_file(out)
+        assert segs, "real clip must produce speaker turns"
+        assert {s.source for s in segs} == {"nemotron"}
+        assert len({s.speaker_id for s in segs}) >= 2
+        for s in segs:
+            assert s.start < s.end and 0.0 <= s.confidence <= 1.0
 
 
 # ─── Active Speaker Tests ────────────────────────────────────────────

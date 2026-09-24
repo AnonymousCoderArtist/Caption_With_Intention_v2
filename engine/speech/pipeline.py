@@ -36,7 +36,7 @@ from engine.diarization.diarizer import Diarizer
 
 logger = logging.getLogger("caption_with_intention")
 
-DEFAULT_DIARIZE_BACKEND = "diarize"
+DEFAULT_DIARIZE_BACKEND = "nemotron"
 DEFAULT_DIARIZE_CONFIDENCE = 0.5
 MAX_CONCURRENT_WORKERS = 2
 
@@ -48,7 +48,8 @@ class SpeechPipeline:
         asr_model: Whisper model size for ASR.
         asr_device: "cpu" or "cuda".
         asr_compute_type: "int8" or "float16".
-        diarize_backend: Diarization backend ("diarize", "pyannote", "ffmpeg_vad").
+        diarize_backend: Diarization backend ("nemotron", "diarize",
+            "pyannote", "ffmpeg_vad").
         diarize_confidence: Minimum confidence for diarization segments.
         align_mode: "forced" or "vad_refinement".
         language: ISO language code for ASR.
