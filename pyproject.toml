@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "caption-with-intention"
@@ -9,16 +9,8 @@ description = "Caption With Intention — Open-Source Automation MVP"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.0",
-    "ffmpeg-python>=0.2",
     "numpy>=1.24",
-    "scipy>=1.11",
     "soundfile>=0.12",
-    "librosa>=0.10",
-    "whisper>=20231117",
-    "pyyaml>=6.0",
-    "click>=8.1",
-    "rich>=13.0",
-    "httpx>=0.25",
 ]
 
 [project.optional-dependencies]
@@ -29,20 +21,27 @@ dev = [
     "ruff>=0.1",
     "mypy>=1.8",
 ]
-gpu = [
-    "torch>=2.0",
-    "torchaudio>=2.0",
-]
-diarize = [
-    "diarize>=3.0",
+asr = [
+    "faster-whisper>=1.0",
 ]
 diarization = [
     "pyannote.audio>=3.0",
+    "silero-vad>=0.3",
 ]
+gpu = [
+    "torch>=2.0",
+    "torchaudio>=2.0",
+    "transformers>=4.40",
+]
+
+[tool.ruff.lint]
+# Codebase convention is Optional[...] annotations
+ignore = ["UP045"]
 
 [tool.setuptools.packages.find]
 include = ["engine.*", "apps.*", "schemas*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 asyncio_mode = "auto"

@@ -341,30 +341,36 @@ Caption_With_Intention_v2/
 
 ### Setup
 
+The project is managed with [uv](https://docs.astral.sh/uv/) (virtual
+environment + dependencies + lockfile):
+
 ```bash
-# Create virtual environment
-uv venv .venv
-
-# Install dependencies
-uv pip install -e .
-
-# Or install manually
-.venv/bin/pip install pydantic numpy scipy pytest
+# Create .venv and install dependencies (creates uv.lock)
+uv sync --extra dev
 
 # Verify installation
-.venv/bin/python scripts/verify_m0.py
+uv run python scripts/verify_m0.py
+```
+
+Optional feature extras (M6 AI pipeline):
+
+```bash
+uv sync --extra dev --extra asr          # faster-whisper (local ASR)
+uv sync --extra dev --extra diarization  # pyannote + silero VAD
+uv sync --extra dev --extra gpu          # torch + transformers (forced alignment)
 ```
 
 ### Running Tests
 
 ```bash
-.venv/bin/python -m pytest tests/unit/ -v
-.venv/bin/python -m pytest tests/integration/ -v
+uv run pytest tests/unit/ -v
+uv run pytest tests/integration/ -v
+uv run pytest tests/ -v
 
 # Run verification scripts
-.venv/bin/python scripts/verify_m0.py
-.venv/bin/python scripts/verify_m1.py
-.venv/bin/python scripts/verify_m2.py
+uv run python scripts/verify_m0.py
+uv run python scripts/verify_m1.py
+uv run python scripts/verify_m2.py
 ```
 
 ---
