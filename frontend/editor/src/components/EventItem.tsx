@@ -1,99 +1,148 @@
-import type { CaptionEvent } from "@/types/project";
+import type { CaptionEvent, Speaker } from "@/types/project";
+import { fmtTime, EVENT_TYPES } from "@/lib/theme";
+import { Icon } from "@/lib/icons";
 
 interface EventItemProps {
   event: CaptionEvent;
+  speakers: Speaker[];
   isSelected: boolean;
   onSelect: () => void;
   onDelete: () => void;
 }
 
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
+export function EventItem({
+  event,
+  speakers,
+  isSelected,
+  onSelect,
+  onDelete,
+}: EventItemProps) {
+  const type = EVENT_TYPES[event.type] ?? EVENT_TYPES.custom;
+  const speaker = speakers.find((s) => s.id === event.speaker_id);
 
-export function EventItem({ event, isSelected, onSelect, onDelete }: EventItemProps) {
   return (
     <div
-      className={`event-card ${isSelected ? "selected" : ""}`}
+      className={`card ev-card ${isSelected ? "selected" : ""}`}
+      style={{ "--ev-color": type.color } as React.CSSProperties}
       onClick={onSelect}
-      style={{ animation: "fadeIn 0.15s ease" }}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === "Enter" && onSelect()}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "var(--sp-2)",
-          marginBottom: "var(--sp-1)",
-        }}
-      >
-        <span className={`badge badge-${event.type}`}>
-          {event.type}
+      <div className="ev-accent" />
+
+      {/* top row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
+        <span className="badge" style={{ background: `${type.color}1f`, color: type.color }}>
+          {type.label}
         </span>
-        <span style={{ fontSize: "0.7rem", color: "var(--text-400)", marginLeft: "auto", fontFamily: "var(--font-mono)" }}>
+        {event.off_camera && (
+          <span className="badge badge-mute" style={{ letterSpacing: "0.05em" }}>
+            Off-cam
+          </span>
+        )}
+        {event.confidence != null && event.confidence < 0.8 && (
+          <span className="badge badge-warning" style={{ letterSpacing: "0.05em" }}>
+            {Math.round(event.confidence * 100)}%
+          </span>
+        )}
+        <span
+          style={{
+            marginLeft: "auto",
+            fontFamily: "var(--font-mono)",
+            fontSize: 9.5,
+            color: "var(--text-500)",
+            letterSpacing: "-0.01em",
+          }}
+        >
           {event.id}
         </span>
       </div>
 
+      {/* text */}
       <div
         style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "0.84rem",
-          marginBottom: "3px",
+          fontSize: 13.5,
+          fontWeight: event.off_camera ? 450 : 540,
+          fontStyle: event.off_camera ? "italic" : "normal",
+          color: "var(--text-100)",
+          lineHeight: 1.4,
+          marginBottom: 9,
           overflow: "hidden",
           textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-          color: "var(--text-200)",
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
         }}
       >
-        {event.text || "(empty)"}
+        {event.text || <span style={{ color: "var(--text-500)" }}>(empty)</span>}
       </div>
 
+      {/* meta row */}
       <div
         style={{
           display: "flex",
-          gap: "var(--sp-2)",
-          fontSize: "0.7rem",
+          alignItems: "center",
+          gap: 8,
+          fontSize: 10.5,
           color: "var(--text-400)",
           fontFamily: "var(--font-mono)",
-          alignItems: "center",
         }}
       >
-        <span>{formatTime(event.start)}</span>
-        <span style={{ color: "var(--text-500)" }}>&#8594;</span>
-        <span>{formatTime(event.end)}</span>
+        <span>{fmtTime(event.start)}</span>
+        <span style={{ color: "var(--text-500)" }}>→</span>
+        <span>{fmtTime(event.end)}</span>
+        <span style={{ color: "var(--text-500)" }}>·</span>
+        <span>{event.words.length}w</span>
+
+        {speaker && (
+          <span
+            style={{
+              marginLeft: "auto",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              fontFamily: "var(--font-sans)",
+              color: "var(--text-300)",
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: speaker.color,
+                boxShadow: `0 0 6px ${speaker.color}88`,
+              }}
+            />
+            {speaker.name}
+          </span>
+        )}
       </div>
 
+      {/* hover delete */}
       <button
+        className="icon-btn sm"
+        style={{
+          position: "absolute",
+          top: 8,
+          right: 8,
+          opacity: 0,
+          width: 24,
+          height: 24,
+          color: "var(--text-400)",
+          zIndex: 2,
+        }}
+        title="Delete event"
         onClick={(e) => {
           e.stopPropagation();
           onDelete();
         }}
-        className="event-delete-btn"
-        style={{
-          fontSize: "0.68rem",
-          marginTop: "var(--sp-1)",
-          color: "var(--danger)",
-          opacity: 0,
-          padding: "var(--sp-1) var(--sp-2)",
-          background: "transparent",
-          border: "none",
-          cursor: "pointer",
-          transition: "opacity var(--t-fast)",
-        }}
+        onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+        onMouseLeave={(e) => (e.currentTarget.style.opacity = isSelected ? "0.5" : "0")}
       >
-        &#10005; Delete
+        <Icon name="trash" size={13} />
       </button>
-
-      <style>{`
-        .event-card:hover .event-delete-btn {
-          opacity: 0.7;
-        }
-        .event-card:hover .event-delete-btn:hover {
-          opacity: 1;
-        }
-      `}</style>
     </div>
   );
 }

@@ -1,66 +1,82 @@
-import { useCallback } from "react";
-import type { EditorApiClient } from "@/api/client";
+import { Icon } from "@/lib/icons";
 
 interface ToolbarProps {
-  api: EditorApiClient | any;
-  onAction: () => void;
-  showToast: (msg: string) => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  onAddEvent: () => void;
+  onAddSpeaker: () => void;
+  onSelectAll: () => void;
+  onClearSelection: () => void;
+  onCopyStyle: () => void;
+  onPasteStyle: () => void;
+  onExport: () => void;
+  onSettings: () => void;
 }
 
-export function Toolbar({ api, onAction, showToast }: ToolbarProps) {
-  const flash = useCallback(async (action: () => void | Promise<void>, text: string) => {
-    showToast(text);
-    onAction();
-    try {
-      await action();
-    } catch {
-      // ignore
-    }
-  }, [onAction, showToast]);
+export function Toolbar({
+  onUndo,
+  onRedo,
+  onAddEvent,
+  onAddSpeaker,
+  onSelectAll,
+  onClearSelection,
+  onCopyStyle,
+  onPasteStyle,
+  onExport,
+  onSettings,
+}: ToolbarProps) {
+  const TBtn = ({
+    icon,
+    label,
+    onClick,
+    title,
+  }: {
+    icon: Parameters<typeof Icon>[0]["name"];
+    label?: string;
+    onClick: () => void;
+    title: string;
+  }) => (
+    <button className="toolbar-btn" onClick={onClick} title={title}>
+      <Icon name={icon} size={16} />
+      {label}
+    </button>
+  );
 
   return (
     <div className="toolbar">
-      <button className="toolbar-btn" onClick={() => flash(() => api?.undo?.(), "Undo")} title="Undo">
-        &#8630; Undo
-      </button>
-      <button className="toolbar-btn" onClick={() => flash(() => api?.redo?.(), "Redo")} title="Redo (Ctrl+Y)">
-        &#8631; Redo
-      </button>
+      <TBtn icon="undo" label="Undo" onClick={onUndo} title="Undo (⌘/Ctrl Z)" />
+      <TBtn icon="redo" label="Redo" onClick={onRedo} title="Redo (⇧⌘/Ctrl Z)" />
 
       <div className="toolbar-separator" />
 
-      <button className="toolbar-btn" onClick={() => flash(() => { }, "Add Speaker")} title="Add Speaker">
-        &#43; Speaker
-      </button>
-      <button className="toolbar-btn" onClick={() => flash(() => { }, "Add Event")} title="Add Event">
-        &#43; Event
-      </button>
+      <TBtn icon="plus" label="Event" onClick={onAddEvent} title="New caption event" />
+      <TBtn icon="user" label="Speaker" onClick={onAddSpeaker} title="New speaker" />
 
       <div className="toolbar-separator" />
 
-      <button className="toolbar-btn" onClick={() => flash(() => api?.selectAll?.(), "All events selected")} title="Select All">
-        &#8862; Select All
-      </button>
-      <button className="toolbar-btn" onClick={() => flash(() => api?.clearSelection?.(), "Selection cleared")} title="Deselect All">
-        &#8856; Deselect
-      </button>
+      <TBtn icon="cursor" onClick={onSelectAll} title="Select all events" />
+      <TBtn icon="deselect" onClick={onClearSelection} title="Clear selection" />
 
       <div className="toolbar-separator" />
 
-      <button className="toolbar-btn" onClick={() => flash(async () => { if (api?.copy_style) await api.copy_style(""); }, "Copy style")} title="Copy Style">
-        &#9246; Copy
-      </button>
-      <button className="toolbar-btn" onClick={() => flash(async () => { if (api?.paste_style) await api.paste_style("", ""); }, "Paste style")} title="Paste Style">
-        &#8679; Paste
-      </button>
+      <TBtn icon="copy" label="Copy style" onClick={onCopyStyle} title="Copy style" />
+      <TBtn icon="paste" label="Paste style" onClick={onPasteStyle} title="Paste style" />
 
-      <div className="toolbar-separator" />
+      <div className="toolbar-spacer" />
 
-      <button className="toolbar-btn" onClick={() => flash(() => { }, "Preview render")} title="Preview">
-        &#9654; Preview
+      <span className="toolbar-hint">
+        <Icon name="sparkle" size={14} />
+        Every property is editable · fully undoable
+      </span>
+
+      <div className="toolbar-spacer" />
+
+      <button className="ghost" onClick={onSettings} title="Settings" style={{ padding: "7px 12px" }}>
+        <Icon name="settings" size={15} />
       </button>
-      <button className="toolbar-btn" onClick={() => flash(() => { }, "Export project")} title="Export">
-        &#8678; Export
+      <button className="primary" onClick={onExport} title="Export" style={{ padding: "7px 16px", fontSize: 12 }}>
+        <Icon name="export" size={15} />
+        Export
       </button>
     </div>
   );

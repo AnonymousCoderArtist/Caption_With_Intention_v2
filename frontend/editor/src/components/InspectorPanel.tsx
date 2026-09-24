@@ -1,335 +1,450 @@
-import { useState, useEffect } from "react";
-import type { CaptionEvent } from "@/types/project";
-import type { EditorApiClient } from "@/api/client";
+import type { CaptionEvent, Speaker, Word } from "@/types/project";
+import { EVENT_TYPES } from "@/lib/theme";
+import { Icon, type IconName } from "@/lib/icons";
 
 interface InspectorPanelProps {
-  api: EditorApiClient | any;
-  eventId: string;
-  onAction: () => void;
+  event: CaptionEvent | null;
+  speakers: Speaker[];
+  onUpdateEvent: (id: string, updates: Partial<CaptionEvent>) => void;
+  onUpdateStyle: (id: string, updates: Record<string, any>) => void;
+  onAddWord: (id: string) => void;
+  onUpdateWord: (id: string, idx: number, updates: Partial<Word>) => void;
+  onRemoveWord: (id: string, idx: number) => void;
 }
 
-export function InspectorPanel({ api, eventId, onAction }: InspectorPanelProps) {
-  const [event, setEvent] = useState<CaptionEvent | null>(null);
-  const [loading, setLoading] = useState(true);
+function Toggle({
+  on,
+  onClick,
+  label,
+}: {
+  on: boolean;
+  onClick: () => void;
+  label?: string;
+}) {
+  return (
+    <button
+      className={`toggle ${on ? "on" : ""}`}
+      onClick={onClick}
+      role="switch"
+      aria-checked={on}
+      title={label}
+    />
+  );
+}
 
-  const loadEvent = async () => {
-    if (!api) {
-      setLoading(false);
-      return;
-    }
-    try {
-      const result = await api.getEvents?.();
-      if (result?.success) {
-        const found = result.data?.find((e: CaptionEvent) => e.id === eventId);
-        setEvent(found ?? null);
-      }
-    } catch {
-      // silent
-    } finally {
-      setLoading(false);
-    }
-  };
+function Section({
+  icon,
+  title,
+  children,
+}: {
+  icon: IconName;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="panel panel-section">
+      <div className="panel-section-head">
+        <h3>
+          <Icon name={icon} size={14} />
+          {title}
+        </h3>
+      </div>
+      <div className="panel-section-body">{children}</div>
+    </div>
+  );
+}
 
-  useEffect(() => {
-    loadEvent();
-  }, [eventId, onAction]);
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="inspector-field">
+      <label>{label}</label>
+      {children}
+    </div>
+  );
+}
 
-  if (loading) {
-    return <div className="loading">Loading inspector...</div>;
-  }
+function Num({
+  value,
+  min,
+  max,
+  step,
+  unit,
+  onChange,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  unit?: string;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="with-unit">
+      <input
+        type="number"
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+      />
+      {unit && <span className="unit">{unit}</span>}
+    </div>
+  );
+}
 
+function Slider({
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  fmt,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+  fmt?: (v: number) => string;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <input
+        type="range"
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+      />
+      <span
+        className="mono"
+        style={{ fontSize: 11, color: "var(--text-300)", width: 42, textAlign: "right" }}
+      >
+        {fmt ? fmt(value) : value}
+      </span>
+    </div>
+  );
+}
+
+export function InspectorPanel({
+  event,
+  speakers,
+  onUpdateEvent,
+  onUpdateStyle,
+  onAddWord,
+  onUpdateWord,
+  onRemoveWord,
+}: InspectorPanelProps) {
   if (!event) {
     return (
-      <div className="empty-state">
-        <span className="empty-state-icon">&#9432;</span>
-        <span>Event not found. Select a different event.</span>
+      <div className="scroll" style={{ display: "flex", alignItems: "center" }}>
+        <div className="empty-state" style={{ padding: 24 }}>
+          <div className="empty-icon">
+            <Icon name="sliders" size={24} />
+          </div>
+          <div className="empty-title">No event selected</div>
+          <div className="empty-body">
+            Select a caption event to inspect &amp; edit its text, timing,
+            typography, animation and box.
+          </div>
+        </div>
       </div>
     );
   }
 
-  const style = event.style;
+  const st = event.style;
+  const type = EVENT_TYPES[event.type] ?? EVENT_TYPES.custom;
 
   return (
-    <div>
-      <h2>Inspector</h2>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+      {/* header */}
       <div
         style={{
-          fontSize: "0.76rem",
-          color: "var(--text-400)",
-          marginBottom: "var(--sp-4)",
-          fontFamily: "var(--font-mono)",
+          padding: "14px 16px 12px",
+          borderBottom: "1px solid var(--border)",
+          background: "linear-gradient(180deg, var(--bg-4), var(--bg-3))",
         }}
       >
-        {event.id} — {event.type}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <h2 style={{ marginBottom: 0, marginRight: "auto" }}>Inspector</h2>
+          <span className="badge" style={{ background: `${type.color}1f`, color: type.color }}>
+            {type.label}
+          </span>
+        </div>
+        <div
+          style={{
+            marginTop: 8,
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
+            color: "var(--text-400)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <span style={{ color: "var(--accent-text)" }}>{event.id}</span>
+          {event.confidence != null && (
+            <span>
+              · conf {Math.round(event.confidence * 100)}%
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* Typography Section */}
-      <div className="panel panel-section" style={{ animation: "fadeIn 0.2s ease" }}>
-        <div style={{ borderBottom: "1px solid var(--border)", paddingBottom: "var(--sp-2)", marginBottom: "var(--sp-3)" }}>
-          <h3 style={{ marginBottom: 0, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-200)" }}>Typography</h3>
-        </div>
-
-        <div className="inspector-field">
-          <label>Size %</label>
-          <input
-            type="number"
-            min="1"
-            max="100"
-            step="0.5"
-            value={style.size_pct}
-            onChange={(e) => updateStyle({ size_pct: parseFloat(e.target.value) || 5.0 })}
+      {/* body */}
+      <div className="scroll" style={{ padding: 16 }}>
+        {/* text */}
+        <div className="inspector-field" style={{ flexDirection: "column", alignItems: "stretch", gap: 6, marginBottom: 12 }}>
+          <label style={{ width: "auto" }}>Text</label>
+          <textarea
+            rows={2}
+            value={event.text}
+            onChange={(e) => onUpdateEvent(event.id, { text: e.target.value })}
+            style={{ minHeight: 44 }}
           />
         </div>
 
-        <div className="inspector-field">
-          <label>Weight</label>
-          <select
-            value={style.weight}
-            onChange={(e) => updateStyle({ weight: parseInt(e.target.value) })}
+        {/* timing */}
+        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+          <div style={{ flex: 1 }}>
+            <Field label="Start">
+              <Num
+                value={Math.round(event.start * 100) / 100}
+                min={0}
+                max={event.end}
+                step={0.01}
+                unit="s"
+                onChange={(v) => onUpdateEvent(event.id, { start: v })}
+              />
+            </Field>
+          </div>
+          <div style={{ flex: 1 }}>
+            <Field label="End">
+              <Num
+                value={Math.round(event.end * 100) / 100}
+                min={event.start + 0.1}
+                max={600}
+                step={0.01}
+                unit="s"
+                onChange={(v) => onUpdateEvent(event.id, { end: v })}
+              />
+            </Field>
+          </div>
+        </div>
+
+        {/* speaker + type */}
+        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+          <div style={{ flex: 1 }}>
+            <Field label="Speaker">
+              <select
+                value={event.speaker_id ?? ""}
+                onChange={(e) => onUpdateEvent(event.id, { speaker_id: e.target.value || null })}
+              >
+                <option value="">— none —</option>
+                {speakers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <div style={{ flex: 1 }}>
+            <Field label="Type">
+              <select
+                value={event.type}
+                onChange={(e) => onUpdateEvent(event.id, { type: e.target.value as CaptionEvent["type"] })}
+              >
+                <option value="dialogue">Dialogue</option>
+                <option value="sound_effect">Sound FX</option>
+                <option value="music">Music</option>
+                <option value="speaker_overlap">Overlap</option>
+                <option value="custom">Custom</option>
+              </select>
+            </Field>
+          </div>
+        </div>
+
+        {/* off-camera */}
+        <div className="inspector-field" style={{ marginBottom: 16 }}>
+          <label>Off-camera (italic)</label>
+          <Toggle
+            on={event.off_camera}
+            onClick={() => onUpdateEvent(event.id, { off_camera: !event.off_camera })}
+            label="Off-camera"
+          />
+        </div>
+
+        {/* words */}
+        <div style={{ marginBottom: 16 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 8,
+            }}
           >
-            <option value="100">100 — Thin</option>
-            <option value="200">200 — Extra Light</option>
-            <option value="300">300 — Light</option>
-            <option value="400">400 — Regular</option>
-            <option value="500">500 — Medium</option>
-            <option value="600">600 — Semi Bold</option>
-            <option value="700">700 — Bold</option>
-            <option value="800">800 — Extra Bold</option>
-            <option value="900">900 — Black</option>
-          </select>
-        </div>
-
-        <div className="inspector-field">
-          <label>Width</label>
-          <input
-            type="number"
-            min="50"
-            max="150"
-            step="1"
-            value={style.width}
-            onChange={(e) => updateStyle({ width: parseInt(e.target.value) || 100 })}
-          />
-        </div>
-
-        <div className="inspector-field">
-          <label>Italic</label>
-          <input
-            type="checkbox"
-            checked={style.italic}
-            onChange={(e) => updateStyle({ italic: e.target.checked })}
-          />
-        </div>
-
-        <div style={{ display: "flex", gap: "var(--sp-3)", flexWrap: "wrap" }}>
-          <div className="inspector-field" style={{ margin: 0 }}>
-            <label style={{ width: "auto", minWidth: "56px" }}>Size</label>
-            <select
-              value={style.size_mode}
-              onChange={(e) => updateStyle({ size_mode: e.target.value as "auto" | "manual" })}
+            <div className="label" style={{ fontSize: 11, letterSpacing: "0.08em" }}>
+              WORDS ({event.words.length})
+            </div>
+            <button
+              className="subtle"
+              onClick={() => onAddWord(event.id)}
+              style={{ fontSize: 11, padding: "4px 8px" }}
             >
-              <option value="auto">Auto</option>
-              <option value="manual">Manual</option>
-            </select>
+              <Icon name="plus" size={12} strokeWidth={2.4} />
+              Add word
+            </button>
           </div>
-          <div className="inspector-field" style={{ margin: 0 }}>
-            <label style={{ width: "auto", minWidth: "60px" }}>Weight</label>
-            <select
-              value={style.weight_mode}
-              onChange={(e) => updateStyle({ weight_mode: e.target.value as "auto" | "manual" })}
-            >
-              <option value="auto">Auto</option>
-              <option value="manual">Manual</option>
+
+          {event.words.length === 0 ? (
+            <div style={{ fontSize: 11.5, color: "var(--text-400)", padding: "10px 12px", background: "var(--bg-3)", borderRadius: 8 }}>
+              No words yet. Add them or build from transcript.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {event.words.map((w2, idx) => (
+                <div key={idx} className="word-row">
+                  <span className="w-idx">{idx + 1}</span>
+                  <input
+                    className="w-text"
+                    value={w2.text}
+                    onChange={(e) => onUpdateWord(event.id, idx, { text: e.target.value })}
+                    style={{ fontSize: 12.5 }}
+                  />
+                  <input
+                    type="number"
+                    step={0.01}
+                    value={Math.round(w2.start * 100) / 100}
+                    onChange={(e) => onUpdateWord(event.id, idx, { start: parseFloat(e.target.value) || 0 })}
+                    style={{ width: 56, padding: "5px 6px", fontSize: 11 }}
+                    title="word start (s)"
+                  />
+                  <input
+                    type="number"
+                    step={0.01}
+                    value={Math.round(w2.end * 100) / 100}
+                    onChange={(e) => onUpdateWord(event.id, idx, { end: parseFloat(e.target.value) || 0 })}
+                    style={{ width: 56, padding: "5px 6px", fontSize: 11 }}
+                    title="word end (s)"
+                  />
+                  <button
+                    className="w-del"
+                    onClick={() => onRemoveWord(event.id, idx)}
+                    title="Delete word"
+                  >
+                    <Icon name="close" size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* typography */}
+        <Section icon="sliders" title="Typography">
+          <Field label="Size">
+            <Num value={st.size_pct} min={1} max={20} step={0.5} unit="%" onChange={(v) => onUpdateStyle(event.id, { size_pct: v })} />
+          </Field>
+          <Field label="Weight">
+            <select value={st.weight} onChange={(e) => onUpdateStyle(event.id, { weight: parseInt(e.target.value) })}>
+              {[100, 200, 300, 400, 500, 600, 700, 800, 900].map((w3) => (
+                <option key={w3} value={w3}>{w3}</option>
+              ))}
             </select>
+          </Field>
+          <Field label="Width">
+            <Num value={st.width} min={75} max={125} step={1} unit="%" onChange={(v) => onUpdateStyle(event.id, { width: v })} />
+          </Field>
+          <div className="inspector-field">
+            <label>Italic</label>
+            <Toggle on={st.italic} onClick={() => onUpdateStyle(event.id, { italic: !st.italic })} label="Italic" />
           </div>
-          <div className="inspector-field" style={{ margin: 0 }}>
-            <label style={{ width: "auto", minWidth: "58px" }}>Width</label>
-            <select
-              value={style.width_mode}
-              onChange={(e) => updateStyle({ width_mode: e.target.value as "auto" | "manual" })}
-            >
-              <option value="auto">Auto</option>
-              <option value="manual">Manual</option>
+          <div style={{ height: 8 }} />
+          <div style={{ display: "flex", gap: 8 }}>
+            {([
+              ["Size", "size_mode", st.size_mode],
+              ["Weight", "weight_mode", st.weight_mode],
+              ["Width", "width_mode", st.width_mode],
+            ] as const).map(([lab, key, val]) => (
+              <div key={key} style={{ flex: 1 }}>
+                <div className="label" style={{ marginBottom: 5, fontSize: 9.5, letterSpacing: "0.08em" }}>
+                  {lab}
+                </div>
+                <select
+                  value={val}
+                  onChange={(e) => onUpdateStyle(event.id, { [key]: e.target.value })}
+                  style={{ width: "100%", padding: "5px 24px 5px 8px", fontSize: 11 }}
+                >
+                  <option value="auto">Auto</option>
+                  <option value="manual">Manual</option>
+                </select>
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        {/* animation */}
+        <Section icon="sparkle" title="Animation">
+          <Field label="Pop scale">
+            <Slider value={st.pop_scale} min={1} max={1.6} step={0.05} onChange={(v) => onUpdateStyle(event.id, { pop_scale: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
+          </Field>
+          <Field label="Pop duration">
+            <Num value={st.pop_duration ?? 0} min={0} max={2} step={0.05} unit="s" onChange={(v) => onUpdateStyle(event.id, { pop_duration: v })} />
+          </Field>
+          <Field label="Easing">
+            <select value={st.pop_easing} onChange={(e) => onUpdateStyle(event.id, { pop_easing: e.target.value })}>
+              <option value="smooth">Smooth</option>
+              <option value="ease_in">Ease in</option>
+              <option value="ease_out">Ease out</option>
             </select>
+          </Field>
+          <div className="inspector-field">
+            <label>Syllable mode</label>
+            <Toggle on={st.syllable_mode} onClick={() => onUpdateStyle(event.id, { syllable_mode: !st.syllable_mode })} label="Syllable mode" />
           </div>
-        </div>
+          <Field label="Read-ahead opacity">
+            <Slider value={st.read_ahead_opacity} min={0} max={1} step={0.05} onChange={(v) => onUpdateStyle(event.id, { read_ahead_opacity: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
+          </Field>
+        </Section>
+
+        {/* caption box */}
+        <Section icon="film" title="Caption Box">
+          <Field label="Opacity">
+            <Slider value={st.box_opacity} min={0} max={1} step={0.05} onChange={(v) => onUpdateStyle(event.id, { box_opacity: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
+          </Field>
+          <Field label="Padding">
+            <Num value={st.box_padding} min={0} max={50} step={1} unit="px" onChange={(v) => onUpdateStyle(event.id, { box_padding: v })} />
+          </Field>
+          <div className="inspector-field">
+            <label>Breakout allowed</label>
+            <Toggle on={st.breakout_permission} onClick={() => onUpdateStyle(event.id, { breakout_permission: !st.breakout_permission })} label="Breakout" />
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <Field label="Min size">
+                <Num value={st.minimum_pct} min={1} max={20} step={0.5} unit="%" onChange={(v) => onUpdateStyle(event.id, { minimum_pct: v })} />
+              </Field>
+            </div>
+            <div style={{ flex: 1 }}>
+              <Field label="Max size">
+                <Num value={st.maximum_pct} min={3} max={50} step={0.5} unit="%" onChange={(v) => onUpdateStyle(event.id, { maximum_pct: v })} />
+              </Field>
+            </div>
+          </div>
+        </Section>
+
+        <div style={{ height: 12 }} />
       </div>
-
-      {/* Animation Section */}
-      <div className="panel panel-section" style={{ animation: "fadeIn 0.2s ease" }}>
-        <div style={{ borderBottom: "1px solid var(--border)", paddingBottom: "var(--sp-2)", marginBottom: "var(--sp-3)" }}>
-          <h3 style={{ marginBottom: 0, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-200)" }}>Animation</h3>
-        </div>
-
-        <div className="inspector-field">
-          <label>Pop Scale</label>
-          <input
-            type="number"
-            min="1.0"
-            max="2.0"
-            step="0.05"
-            value={style.pop_scale}
-            onChange={(e) => updateStyle({ pop_scale: parseFloat(e.target.value) || 1.15 })}
-          />
-        </div>
-
-        <div className="inspector-field">
-          <label>Pop Duration</label>
-          <input
-            type="number"
-            min="0"
-            max="2"
-            step="0.05"
-            value={style.pop_duration ?? 0}
-            onChange={(e) => updateStyle({ pop_duration: parseFloat(e.target.value) || 0 })}
-          />
-        </div>
-
-        <div className="inspector-field">
-          <label>Easing</label>
-          <select
-            value={style.pop_easing}
-            onChange={(e) => updateStyle({ pop_easing: e.target.value as any })}
-          >
-            <option value="smooth">Smooth</option>
-            <option value="ease_in">Ease In</option>
-            <option value="ease_out">Ease Out</option>
-          </select>
-        </div>
-
-        <div className="inspector-field">
-          <label>Syllable Mode</label>
-          <input
-            type="checkbox"
-            checked={style.syllable_mode}
-            onChange={(e) => updateStyle({ syllable_mode: e.target.checked })}
-          />
-        </div>
-
-        <div className="inspector-field">
-          <label>Color Transition Pt.</label>
-          <input
-            type="number"
-            min="0"
-            max="1"
-            step="0.05"
-            value={style.color_transition_point ?? 0}
-            onChange={(e) => updateStyle({ color_transition_point: parseFloat(e.target.value) || 0 })}
-          />
-        </div>
-
-        <div className="inspector-field">
-          <label>Color Transition Dur.</label>
-          <input
-            type="number"
-            min="0"
-            max="2"
-            step="0.05"
-            value={style.color_transition_duration ?? 0}
-            onChange={(e) => updateStyle({ color_transition_duration: parseFloat(e.target.value) || 0 })}
-          />
-        </div>
-
-        <div className="inspector-field">
-          <label>Read-Ahead Opacity</label>
-          <input
-            type="number"
-            min="0"
-            max="1"
-            step="0.05"
-            value={style.read_ahead_opacity}
-            onChange={(e) => updateStyle({ read_ahead_opacity: parseFloat(e.target.value) || 0.9 })}
-          />
-        </div>
-      </div>
-
-      {/* Caption Box Section */}
-      <div className="panel panel-section" style={{ animation: "fadeIn 0.2s ease" }}>
-        <div style={{ borderBottom: "1px solid var(--border)", paddingBottom: "var(--sp-2)", marginBottom: "var(--sp-3)" }}>
-          <h3 style={{ marginBottom: 0, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-200)" }}>Caption Box</h3>
-        </div>
-
-        <div className="inspector-field">
-          <label>Opacity</label>
-          <input
-            type="number"
-            min="0"
-            max="1"
-            step="0.05"
-            value={style.box_opacity}
-            onChange={(e) => updateStyle({ box_opacity: parseFloat(e.target.value) || 0.9 })}
-          />
-        </div>
-
-        <div className="inspector-field">
-          <label>Padding</label>
-          <input
-            type="number"
-            min="0"
-            max="50"
-            step="1"
-            value={style.box_padding}
-            onChange={(e) => updateStyle({ box_padding: parseInt(e.target.value) || 10 })}
-          />
-        </div>
-
-        <div className="inspector-field">
-          <label>Break Out</label>
-          <input
-            type="checkbox"
-            checked={style.breakout_permission}
-            onChange={(e) => updateStyle({ breakout_permission: e.target.checked })}
-          />
-        </div>
-
-        <div className="inspector-field">
-          <label>Min Size %</label>
-          <input
-            type="number"
-            min="1"
-            max="20"
-            step="0.5"
-            value={style.minimum_pct}
-            onChange={(e) => updateStyle({ minimum_pct: parseFloat(e.target.value) || 3.0 })}
-          />
-        </div>
-
-        <div className="inspector-field">
-          <label>Max Size %</label>
-          <input
-            type="number"
-            min="5"
-            max="50"
-            step="0.5"
-            value={style.maximum_pct}
-            onChange={(e) => updateStyle({ maximum_pct: parseFloat(e.target.value) || 12.0 })}
-          />
-        </div>
-      </div>
-
-      <style>{`
-        .inspector-field input[type="number"] {
-          width: 80px;
-          font-family: var(--font-mono);
-          font-size: 0.8rem;
-        }
-        .inspector-field select {
-          font-size: 0.78rem;
-          max-width: 120px;
-        }
-      `}</style>
     </div>
   );
-
-  async function updateStyle(updates: Record<string, any>) {
-    if (!api || !event) return;
-    try {
-      const result = await api.setTypography(event.id, updates);
-      if (result?.success) {
-        setEvent(result.data);
-        onAction();
-      }
-    } catch (err) {
-      console.error("Failed to update style:", err);
-    }
-  }
 }

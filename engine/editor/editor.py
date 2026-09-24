@@ -30,6 +30,23 @@ from schemas.project import (
 
 logger = logging.getLogger("caption_with_intention")
 
+# Word fields accepted from transcript entries (M6 ASR output)
+_WORD_FIELDS = {
+    "text",
+    "start",
+    "end",
+    "size_pct",
+    "weight",
+    "width",
+    "color",
+    "opacity",
+    "italic",
+    "confidence",
+    "source_model",
+    "source_timestamp",
+    "manual_override",
+}
+
 
 class EditAction:
     """Represents a single editable action for undo/redo."""
@@ -673,11 +690,21 @@ class Editor:
         """Build a complete CI project from a transcript.
 
         Args:
-            transcript: List of dicts with 'text', 'start', 'end' keys.
+            transcript: List of caption entries, each a dict with at least
+                'text', 'start', 'end'. M6 ASR entries may also carry:
+                    - 'words': precise word timing [{'text', 'start', 'end',
+                      'confidence', 'source_model', ...}] — used verbatim
+                      instead of evenly spreading word timings.
+                    - 'confidence', 'source_model', 'source_timestamp':
+                      event-level AI provenance (spec §2.2).
+                    - 'speaker_id', 'off_camera', 'manual_override':
+                      attribution and review flags.
             video_width: Video width in pixels.
             video_height: Video height in pixels.
             fps: Video frame rate.
-            speakers: Optional list of speaker dicts.
+            speakers: Optional list of speaker dicts. A 'name' is required;
+                an explicit 'id' is honored so events can reference
+                pipeline speaker ids.
 
         Returns:
             The built Project.
@@ -695,7 +722,8 @@ class Editor:
             duration=transcript[-1]["end"] if transcript else 0.0,
         )
 
-        # Add speakers if provided
+        # Add speakers if provided (M6: honor explicit ids so events can
+        # reference pipeline speaker ids)
         if speakers:
             for spk in speakers:
                 spk_kwargs = {
@@ -710,32 +738,61 @@ class Editor:
                         "off_camera",
                     ]
                 }
-                self.add_speaker(**spk_kwargs)
+                if "id" in spk:
+                    speaker = Speaker(id=str(spk["id"]), **spk_kwargs)
+                    self.project.speakers.append(speaker)
+                else:
+                    self.add_speaker(**spk_kwargs)
 
         # Add each transcript entry as an event
         for entry in transcript:
             text = entry.get("text", "")
             start = entry.get("start", 0.0)
             end = entry.get("end", 0.0)
-            words_text = text.split()
-            word_count = len(words_text)
-            word_duration = (end - start) / max(word_count, 1)
 
-            words = []
-            word_start = start
-            for w in words_text:
-                word_end = word_start + word_duration
-                words.append(
-                    {"text": w, "start": word_start, "end": word_end}
-                )
-                word_start = word_end
+            entry_words = entry.get("words")
+            if entry_words:
+                # M6: precise word timing from ASR + alignment — use verbatim
+                words = []
+                for w in entry_words:
+                    if not isinstance(w, dict) or not w.get("text"):
+                        continue
+                    word = {k: v for k, v in w.items() if k in _WORD_FIELDS}
+                    word.setdefault("start", start)
+                    word.setdefault("end", end)
+                    words.append(word)
+                    end = max(end, float(word["end"]))
+            else:
+                words_text = text.split()
+                word_count = len(words_text)
+                word_duration = (end - start) / max(word_count, 1)
 
-            self.add_event(
+                words = []
+                word_start = start
+                for w in words_text:
+                    word_end = word_start + word_duration
+                    words.append(
+                        {"text": w, "start": word_start, "end": word_end}
+                    )
+                    word_start = word_end
+
+            event = self.add_event(
                 text=text,
                 start=start,
                 end=end,
+                speaker_id=entry.get("speaker_id"),
                 words=words if words else None,
             )
+            # M6 provenance metadata (spec §2.2)
+            for key in (
+                "confidence",
+                "source_model",
+                "source_timestamp",
+                "manual_override",
+                "off_camera",
+            ):
+                if key in entry:
+                    setattr(event, key, entry[key])
 
         self._save()
         logger.info(
