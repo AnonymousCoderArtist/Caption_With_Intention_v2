@@ -65,6 +65,43 @@ class TestIntonationAnalyzer:
         assert loud.loudness > quiet.loudness
         assert loud.typography["size_pct"] > quiet.typography["size_pct"]
 
+    def test_hot_scene_calibrates_to_baseline(self):
+        # Uniformly hot-mastered speech (all words loud in absolute dB)
+        # must render at the 5% baseline, not blow up every word.
+        audio = _concat(
+            _sine(200, 0.3, amp=0.8),
+            _sine(200, 0.3, amp=0.8),
+            _sine(200, 0.3, amp=0.8),
+        )
+        words = [
+            Word("even", 0.0, 0.3),
+            Word("even", 0.3, 0.6),
+            Word("even", 0.6, 0.9),
+        ]
+        result = IntonationAnalyzer(smooth_window=1).analyze(audio, SR, words)
+        for w in result.words:
+            assert w.typography["size_pct"] == pytest.approx(5.0, abs=0.3)
+            # Raw measured loudness is preserved on the word.
+            assert w.loudness > 0.5
+
+    def test_hot_scene_preserves_emphasis_contrast(self):
+        # In a hot scene, a word clearly louder than the rest still
+        # grows above baseline.
+        audio = _concat(
+            _sine(200, 0.3, amp=0.8),
+            _sine(200, 0.3, amp=0.8),
+            _sine(200, 0.3, amp=1.0),
+        )
+        words = [
+            Word("calm", 0.0, 0.3),
+            Word("calm", 0.3, 0.6),
+            Word("SHOUT", 0.6, 0.9),
+        ]
+        result = IntonationAnalyzer(smooth_window=1).analyze(audio, SR, words)
+        calm, _, shout = result.words
+        assert calm.typography["size_pct"] == pytest.approx(5.0, abs=0.3)
+        assert shout.typography["size_pct"] > calm.typography["size_pct"]
+
     def test_low_pitch_heavier_weight(self):
         audio = _concat(_sine(120, 0.4), _sine(280, 0.4))
         words = [Word("deep", 0.0, 0.4), Word("high", 0.4, 0.8)]

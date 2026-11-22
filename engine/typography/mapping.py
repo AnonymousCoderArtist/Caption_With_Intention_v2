@@ -30,8 +30,15 @@ def volume_to_size(
     Returns:
         Type size as percentage of screen height.
     """
-    # Linear mapping: louder → larger
-    size = minimum_pct + loudness * (maximum_pct - minimum_pct)
+    # Piecewise anchored mapping: 0.5 loudness (normal speech) lands
+    # exactly on the baseline size, so [0, 0.5] spans whisper->normal
+    # and [0.5, 1] spans normal->yell. A purely linear map leaves
+    # normal speech at 7.5% instead of the documented 5% baseline.
+    loud = max(0.0, min(1.0, loudness))
+    if loud <= 0.5:
+        size = minimum_pct + (loud / 0.5) * (baseline_pct - minimum_pct)
+    else:
+        size = baseline_pct + ((loud - 0.5) / 0.5) * (maximum_pct - baseline_pct)
     return max(minimum_pct, min(maximum_pct, size))
 
 

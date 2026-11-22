@@ -54,7 +54,7 @@ def _make_project(events: list[dict] | None = None, speakers: list[dict] | None 
 class TestComputeWordStyle:
     def test_normal_volume(self):
         style = compute_word_style(loudness=0.5)
-        assert style["size_pct"] == 7.5  # midpoint of 3-12%
+        assert style["size_pct"] == 5.0  # 0.5 = normal speech -> 5% baseline
 
     def test_quiet(self):
         style = compute_word_style(loudness=0.0)
@@ -95,7 +95,7 @@ class TestComputeWordStyle:
     def test_pop_size(self):
         style = compute_word_style(loudness=0.5)
         assert style["pop_size_pct"] > style["size_pct"]
-        assert abs(style["pop_size_pct"] - 7.5 * 1.25) < 0.01
+        assert abs(style["pop_size_pct"] - 5.0 * 1.25) < 0.01
 
 
 class TestComputeWorkAreaPosition:

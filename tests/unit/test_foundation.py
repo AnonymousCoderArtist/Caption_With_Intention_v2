@@ -119,9 +119,14 @@ class TestVolumeToSize:
         size = volume_to_size(1.0)
         assert size == 12.0
 
-    def test_normal_is_approximate_baseline(self):
-        size = volume_to_size(0.42)  # ~50% loudness
-        assert 3.0 <= size <= 12.0
+    def test_normal_speech_is_baseline(self):
+        # 0.5 loudness is the normal-speech anchor and must land
+        # exactly on the 5% baseline (piecewise mapping).
+        assert volume_to_size(0.5) == 5.0
+
+    def test_between_anchor_points(self):
+        assert 3.0 < volume_to_size(0.25) < 5.0
+        assert 5.0 < volume_to_size(0.75) < 12.0
 
     def test_clamps_to_range(self):
         assert volume_to_size(-1.0) == 3.0

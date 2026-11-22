@@ -288,6 +288,142 @@ class SpeechPipeline:
         )
         return result
 
+    def attach_pitch_contours(
+        self,
+        result: dict,
+        source_path: str | Path,
+    ) -> dict:
+        """Add syllables + per-syllable/per-letter pitch contours (M9/M10).
+
+        Syllabifies the final word list (audio-refined, M10) and fills
+        each syllable's "pitch_hz" from the source audio so the
+        renderer's mid-word pitch contour lights up automatically.
+        Sustained loud single-syllable words (screams) additionally get
+        per-letter pitches (Word.letter_pitches) so the scaled-up text
+        follows the wave (user rule 2026-11-22). Loudness comes from a
+        prior attach_intonation() call when present.
+
+        Attaches a "contours" key: one entry per transcription word,
+        {"syllables": [...]|None, "letter_pitches": [...]|None}.
+        """
+        from engine.alignment.syllables import syllabify_words
+        from engine.audio_analysis.intonation import DEFAULT_SAMPLE_RATE
+        from engine.audio_analysis.pitch_contour import (
+            attach_syllable_pitch,
+            letter_pitches_for_word,
+        )
+
+        words = result["transcription"].words
+        if not words:
+            result["contours"] = None
+            return result
+
+        logger.info("Running syllable + pitch contour analysis (M9/M10)...")
+        # Decode the waveform once via the same ffmpeg extraction path
+        # IntonationAnalyzer.analyze_file uses.
+        import subprocess as _sp
+        import tempfile as _tf
+
+        import soundfile as sf
+
+        source = Path(source_path)
+        tmp_path = None
+        try:
+            audio_path = source
+            if source.suffix.lower() != ".wav":
+                fd, tmp_path = _tf.mkstemp(suffix=".wav")
+                import os
+
+                os.close(fd)
+                proc = _sp.run(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(source),
+                        "-ac",
+                        "1",
+                        "-ar",
+                        str(DEFAULT_SAMPLE_RATE),
+                        tmp_path,
+                    ],
+                    capture_output=True,
+                    timeout=120,
+                    check=False,
+                )
+                if proc.returncode != 0:
+                    raise RuntimeError(
+                        f"ffmpeg audio extraction failed for {source}"
+                    )
+                audio_path = Path(tmp_path)
+            audio, sample_rate = sf.read(str(audio_path), dtype="float32")
+            if audio.ndim > 1:
+                audio = audio.mean(axis=1)
+        finally:
+            if tmp_path:
+                try:
+                    Path(tmp_path).unlink()
+                except OSError:
+                    pass
+
+        syl_results = syllabify_words(words, audio, sample_rate)
+        intonation_words = (
+            result.get("intonation", {}).get("words")
+            if result.get("intonation")
+            else None
+        )
+
+        contours: list[dict] = []
+        for i, (word, ws) in enumerate(zip(words, syl_results)):
+            syllables = (
+                attach_syllable_pitch(audio, sample_rate, ws.syllables)
+                if ws.use_syllable_animation
+                else None
+            )
+            size_pct = None
+            if intonation_words and i < len(intonation_words):
+                size_pct = intonation_words[i].get("typography", {}).get(
+                    "size_pct"
+                )
+            letter_pitches = None
+            if size_pct is not None:
+                letter_pitches = letter_pitches_for_word(
+                    audio,
+                    sample_rate,
+                    word.start,
+                    word.end,
+                    word.text,
+                    float(size_pct),
+                    syllable_count=len(ws.syllables),
+                )
+            contours.append(
+                {"syllables": syllables, "letter_pitches": letter_pitches}
+            )
+
+        result["contours"] = contours
+        n_syl = sum(1 for c in contours if c["syllables"])
+        n_letters = sum(1 for c in contours if c["letter_pitches"])
+        logger.info(
+            "Pitch contours complete: %d words syllable-animated, %d with letter pitches",
+            n_syl,
+            n_letters,
+        )
+        return result
+
+    def run_full(
+        self,
+        source_path: str | Path,
+        min_speaker_duration: float = 0.5,
+    ) -> dict:
+        """Everything automated, one call: ASR + diarization + alignment
+        + intonation (loudness/pitch/harmonics typography) + syllables
+        and pitch contours. The result feeds build_editor_payload()
+        straight into a fully expressive CWI project."""
+        result = self.run_with_alignment(source_path, min_speaker_duration)
+        self.attach_intonation(result, source_path)
+        self.attach_pitch_contours(result, source_path)
+        return result
+
     # ─── Editor Integration (M6) ───────────────────────────────────
 
     def build_editor_payload(self, result: dict) -> dict:
@@ -323,6 +459,36 @@ class SpeechPipeline:
                     }
                 )
 
+        # Expressive data feeds (M9/M10): intonation typography and
+        # syllable/pitch contours, index-aligned with the word list.
+        intonation_words = (
+            result.get("intonation", {}).get("words")
+            if result.get("intonation")
+            else None
+        )
+        contours = result.get("contours")
+
+        def _word_payload(w, idx: int) -> dict:
+            d = {
+                "text": w.text,
+                "start": round(w.start, 4),
+                "end": round(w.end, 4),
+                "confidence": w.confidence if w.confidence > 0 else None,
+                "source_model": model,
+                "source_timestamp": round(w.start, 4),
+            }
+            if intonation_words and idx < len(intonation_words):
+                typo = intonation_words[idx].get("typography") or {}
+                for key in ("size_pct", "weight", "width"):
+                    if typo.get(key) is not None:
+                        d[key] = typo[key]
+            if contours and idx < len(contours):
+                if contours[idx].get("syllables"):
+                    d["syllables"] = contours[idx]["syllables"]
+                if contours[idx].get("letter_pitches"):
+                    d["letter_pitches"] = contours[idx]["letter_pitches"]
+            return d
+
         entries: list[dict] = []
         segments = transcription.segments or []
         word_starts = [w.start for w in words]
@@ -341,17 +507,8 @@ class SpeechPipeline:
 
                 entry_words: list[dict] = []
                 speaker_votes: dict[str, int] = {}
-                for w in seg_words:
-                    entry_words.append(
-                        {
-                            "text": w.text,
-                            "start": round(w.start, 4),
-                            "end": round(w.end, 4),
-                            "confidence": w.confidence if w.confidence > 0 else None,
-                            "source_model": model,
-                            "source_timestamp": round(w.start, 4),
-                        }
-                    )
+                for k, w in enumerate(seg_words):
+                    entry_words.append(_word_payload(w, lo + k))
                     if w.speaker_id:
                         speaker_votes[w.speaker_id] = (
                             speaker_votes.get(w.speaker_id, 0) + 1
@@ -391,15 +548,7 @@ class SpeechPipeline:
                     "start": round(min(w.start for w in words), 4),
                     "end": round(max(w.end for w in words), 4),
                     "words": [
-                        {
-                            "text": w.text,
-                            "start": round(w.start, 4),
-                            "end": round(w.end, 4),
-                            "confidence": w.confidence if w.confidence > 0 else None,
-                            "source_model": model,
-                            "source_timestamp": round(w.start, 4),
-                        }
-                        for w in words
+                        _word_payload(w, idx) for idx, w in enumerate(words)
                     ],
                     "confidence": (
                         round(sum(confs) / len(confs), 4) if confs else None

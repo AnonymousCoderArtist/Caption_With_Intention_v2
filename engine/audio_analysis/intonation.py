@@ -22,6 +22,7 @@ Usage:
 from __future__ import annotations
 
 import logging
+import statistics
 import subprocess
 import tempfile
 from collections.abc import Sequence
@@ -38,6 +39,10 @@ from engine.audio_analysis.basic import (
     smooth_signal,
 )
 from engine.typography.mapping import compute_word_typography
+
+# Normal-speech anchor: loudness 0.5 maps to the 5% baseline type
+# size (see typography.mapping.volume_to_size).
+NORMAL_SPEECH_LOUDNESS = 0.5
 
 logger = logging.getLogger("caption_with_intention")
 
@@ -204,10 +209,30 @@ class IntonationAnalyzer:
         )
         pitch_s = self._smooth_pitch([r["pitch"] for r in raw])
 
+        # Scene-relative calibration. Absolute dB levels conflate hot
+        # mastering with loud delivery: an evenly loud narration
+        # otherwise renders every word big. When the scene's typical
+        # word runs hotter than the normal-speech anchor, scale all
+        # words down so the typical word lands on the anchor (baseline
+        # size) and only genuine emphasis grows. Quiet scenes keep
+        # their absolute levels, so whispers stay small. The recorded
+        # loudness field stays the raw smoothed measurement; the
+        # calibrated value drives typography only.
+        refs = [
+            loudness_s[i] for i, r in enumerate(raw) if r["reliable"]
+        ]
+        ref = statistics.median(refs) if refs else 0.0
+        cal = (
+            NORMAL_SPEECH_LOUDNESS / ref
+            if ref > NORMAL_SPEECH_LOUDNESS
+            else 1.0
+        )
+
         out: list[WordIntonation] = []
         for i, (word, r) in enumerate(zip(words, raw)):
             reliable = r["reliable"]
-            loud = loudness_s[i] if reliable else 0.0
+            loud_raw = loudness_s[i] if reliable else 0.0
+            loud = loud_raw * cal
             pitch = pitch_s[i] if reliable else None
             low = low_s[i] if reliable else 0.0
             high = high_s[i] if reliable else 0.0
@@ -216,7 +241,7 @@ class IntonationAnalyzer:
                     text=word.text,
                     start=word.start,
                     end=word.end,
-                    loudness=loud,
+                    loudness=loud_raw,
                     pitch_hz=pitch,
                     low_harmonic=low,
                     high_harmonic=high,

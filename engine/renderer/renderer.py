@@ -1015,17 +1015,31 @@ class CwiRenderer:
                         # through the scaled-up hold, tracking the
                         # scream's progress (user rule 2026-11-22).
                         hold_s = word_end_t - start
-                        letters = span["text"]
+                        # Sweep units: one per non-space letter (spaces
+                        # ride along with their neighbor so per-letter
+                        # pitch data aligns to the word's letters).
+                        units: list[tuple[str, int]] = []
+                        pending_ws = ""
+                        for ch in span["text"]:
+                            if ch.isspace():
+                                pending_ws += ch
+                                continue
+                            units.append((pending_ws + ch, len(units)))
+                            pending_ws = ""
+                        if pending_ws and units:
+                            prev, pidx = units[-1]
+                            units[-1] = (prev + pending_ws, pidx)
+                        n_letters = len(units)
                         if (
                             hold_s > 0
                             and span["size_px"] >= esc_gate_px
                             and hold_s
                             >= LETTER_SWEEP_MIN_PER_LETTER_S
-                            * max(2, len(letters))
+                            * max(2, n_letters)
                         ):
-                            per_ms = hold_s * 1000.0 / len(letters)
+                            per_ms = hold_s * 1000.0 / n_letters
                             pitches = word.letter_pitches or []
-                            for li, ch in enumerate(letters):
+                            for ch, li in units:
                                 t_on = int(li * per_ms)
                                 sweep = (
                                     f"\\t({t_on},"

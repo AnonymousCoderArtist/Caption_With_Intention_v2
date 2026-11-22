@@ -838,7 +838,7 @@ class TestTypeSizeRange:
     def test_baseline_5_pct(self):
         """Baseline type size is 5%."""
         style = compute_word_style(loudness=0.5)
-        assert style["size_pct"] == 7.5  # midpoint of 3-12% maps to 7.5 for 0.5 loudness
+        assert style["size_pct"] == 5.0  # 0.5 loudness = normal speech -> 5% baseline
 
     def test_minimum_3_pct(self):
         """Minimum type size is 3%."""

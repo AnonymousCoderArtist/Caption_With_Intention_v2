@@ -45,6 +45,8 @@ _WORD_FIELDS = {
     "source_model",
     "source_timestamp",
     "manual_override",
+    "syllables",
+    "letter_pitches",
 }
 
 
