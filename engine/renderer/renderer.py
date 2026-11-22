@@ -98,6 +98,22 @@ EASE_IN = 2.2
 # the following words rise; each step is an eased glide of this length
 # (capped to half the interval), not a jump at the next word's onset.
 TAIL_GLIDE_MS = 240
+# Dock-magnification wave (his rule 2026-11-22: "just like the
+# MacBook dock" - each letter's lift falls off smoothly with its
+# distance from the spoken position, so the ripple flows letter by
+# letter, never in word or syllable chunks): letters within this many
+# letter-positions of the speech cursor join the wave crest.
+DOCK_SPREAD_LETTERS = 3.0
+
+
+def _dock_falloff(distance: float) -> float:
+    """Smooth cosine-squared falloff from the wave crest, 0 at the
+    spread edge - the macOS dock magnification curve."""
+    if distance >= DOCK_SPREAD_LETTERS:
+        return 0.0
+    return math.cos(distance / DOCK_SPREAD_LETTERS * math.pi / 2.0) ** 2
+
+
 # Sustained loud words (escalation gate, launch film WHOOOOOA): the
 # sync keeps sweeping through the word while it is held scaled up
 # (user rule 2026-11-22: "the synchronisation of scaled up word
@@ -903,6 +919,53 @@ class CwiRenderer:
         )
         org_y = screen_height - margin_v
         org_distance = 100000.0 + screen_width / 2.0
+
+        # Letter units per word for the dock wave: whitespace folds into
+        # the following letter so elevations index visible glyphs only.
+        letter_units: list[list[str]] = []
+        letter_base: list[int] = []
+        _pos = 0
+        for _span in spans:
+            _units: list[str] = []
+            _pending = ""
+            for _ch in _span["text"]:
+                if _ch.isspace():
+                    _pending += _ch
+                    continue
+                _units.append(_pending + _ch)
+                _pending = ""
+            if _pending and _units:
+                _units[-1] += _pending
+            elif _pending:
+                _units.append(_pending)
+            letter_units.append(_units)
+            letter_base.append(_pos)
+            _pos += len(_units)
+        letter_count = [len(_u) for _u in letter_units]
+
+        # Per-letter pitch for the wave crest: explicit letter_pitches
+        # first, else the letter's syllable pitch, else the word pitch.
+        letter_pitch: list[list[Optional[float]]] = []
+        for _i, _span in enumerate(spans):
+            _w = _span["word"]
+            _n = letter_count[_i]
+            _lp = _w.letter_pitches or []
+            if _lp:
+                letter_pitch.append(
+                    [_lp[j] if j < len(_lp) else _w.pitch_hz for j in range(_n)]
+                )
+                continue
+            _syls = _w.syllables or []
+            if _syls and any(s.get("pitch_hz") for s in _syls):
+                _per: list[Optional[float]] = []
+                for _s in _syls:
+                    _k = sum(1 for c in _s.get("text", "") if not c.isspace())
+                    _per.extend([_s.get("pitch_hz")] * _k)
+                while len(_per) < _n:
+                    _per.append(_per[-1] if _per else _w.pitch_hz)
+                letter_pitch.append(_per[:_n])
+            else:
+                letter_pitch.append([_w.pitch_hz] * _n)
         white = f"\\c&HFFFFFF&\\alpha&H{alpha:02X}&"
 
         if not spans:
@@ -1046,11 +1109,246 @@ class CwiRenderer:
                 _emit_span(box_span_tags, box_parts, span["text"], box_tag)
             box_text = "".join(box_parts)
 
+            # Dock-magnification wave layout for this interval (his rule
+            # 2026-11-22: the ripple flows letter by letter like the
+            # MacBook dock). The cursor sweeps the current word's
+            # letters over its spoken window; the crest amplitude is the
+            # pop elevation plus the word's pitch-wave offset; the lift
+            # falls off smoothly with letter distance from the cursor
+            # and bleeds a little into the previous word's tail.
+            dock_split: dict[int, list[tuple[float, float]]] = {}
+            glide_ms = duration_ms
+            if pulsing and cur_word is not None and spans:
+                pop_scale = event.style.pop_scale
+
+                def _bump_amp(
+                    i2: int,
+                    j2: Optional[int] = None,
+                    pop_scale: float = pop_scale,
+                ) -> float:
+                    sp2 = spans[i2]
+                    amp = 0.0
+                    if pop_scale > 1.0:
+                        amp += (pop_scale - 1.0) * sp2["size_px"]
+                    p2 = (
+                        letter_pitch[i2][j2]
+                        if j2 is not None and j2 < len(letter_pitch[i2])
+                        else None
+                    )
+                    if p2:
+                        amp += _pitch_offset_px(p2, sp2["size_px"])
+                    elif sp2["word"].pitch_hz:
+                        amp += _pitch_offset_px(
+                            sp2["word"].pitch_hz, sp2["size_px"]
+                        )
+                    return amp
+
+                def _wave_tail_px(i2: int, scale: float) -> float:
+                    w2 = spans[i2]["word"]
+                    if not w2.pitch_hz:
+                        return 0.0
+                    return (
+                        _pitch_offset_px(w2.pitch_hz, spans[i2]["size_px"])
+                        * scale
+                    )
+
+                if cur_word >= len(spans):
+                    # Terminal: speech over - every letter glides from
+                    # its bump/tail elevation back to the baseline.
+                    last = len(spans) - 1
+                    c_end = letter_base[last] + max(
+                        0, letter_count[last] - 1
+                    )
+                    amp_last = _bump_amp(last)
+                    for i2 in range(len(spans)):
+                        age = cur_word - i2
+                        from_tail = {
+                            2: WAVE_TAIL_STEP_1,
+                            3: WAVE_TAIL_STEP_2,
+                        }.get(age, 0.0)
+                        recs = []
+                        for j2 in range(letter_count[i2]):
+                            p2 = letter_base[i2] + j2
+                            bump = _dock_falloff(abs(p2 - c_end)) * (
+                                amp_last if age <= 2 else 0.0
+                            )
+                            recs.append(
+                                (_wave_tail_px(i2, from_tail) + bump, 0.0)
+                            )
+                        if recs and max(
+                            abs(a - b) for a, b in recs
+                        ) >= 0.5:
+                            dock_split[i2] = recs
+                    glide_ms = min(TAIL_GLIDE_MS, duration_ms / 2)
+                else:
+                    _w = spans[cur_word]["word"]
+                    _n = letter_count[cur_word]
+                    _base = letter_base[cur_word]
+                    _dur = max(1e-6, float(_w.end) - float(_w.start))
+                    _f0 = min(max((start - float(_w.start)) / _dur, 0.0), 1.0)
+                    _f1 = min(
+                        max(
+                            (min(end, float(_w.end)) - float(_w.start))
+                            / _dur,
+                            0.0,
+                        ),
+                        1.0,
+                    )
+                    c0 = _base + (_f0 * (_n - 1) if _n > 1 else 0.0)
+                    c1 = _base + (_f1 * (_n - 1) if _n > 1 else 0.0)
+                    fade1 = 1.0
+                    if end > float(_w.end):
+                        fade1 = max(
+                            0.0,
+                            1.0
+                            - (end - float(_w.end)) * 1000.0 / POP_OUT_MS,
+                        )
+                    if end > float(_w.end):
+                        glide_ms = min(
+                            duration_ms,
+                            max(
+                                POP_OUT_MS,
+                                (float(_w.end) - start) * 1000.0,
+                            ),
+                        )
+                    amp_uniform = _bump_amp(cur_word)
+                    for i2 in range(cur_word + 1):
+                        recs = []
+                        for j2 in range(letter_count[i2]):
+                            p2 = letter_base[i2] + j2
+                            if i2 == cur_word:
+                                a0 = _bump_amp(cur_word, j2)
+                                a1 = a0 * fade1
+                                recs.append(
+                                    (
+                                        _dock_falloff(abs(p2 - c0)) * a0,
+                                        _dock_falloff(abs(p2 - c1)) * a1,
+                                    )
+                                )
+                            else:
+                                bump0 = (
+                                    _dock_falloff(abs(p2 - c0))
+                                    * amp_uniform
+                                )
+                                bump1 = (
+                                    _dock_falloff(abs(p2 - c1))
+                                    * amp_uniform
+                                    * fade1
+                                )
+                                age = cur_word - i2
+                                first_after = (
+                                    i2 == cur_word - 1
+                                    and cur_syl in (None, 0)
+                                )
+                                tail = (
+                                    WAVE_TAIL_STEP_1
+                                    if age == 1
+                                    else WAVE_TAIL_STEP_2
+                                    if age == 2
+                                    else 0.0
+                                )
+                                if age == 1:
+                                    from_t = (
+                                        0.0
+                                        if first_after
+                                        else WAVE_TAIL_STEP_1
+                                    )
+                                else:
+                                    from_t = {
+                                        2: WAVE_TAIL_STEP_1,
+                                        3: WAVE_TAIL_STEP_2,
+                                    }.get(age, 0.0)
+                                recs.append(
+                                    (
+                                        _wave_tail_px(i2, from_t) + bump0,
+                                        _wave_tail_px(i2, tail) + bump1,
+                                    )
+                                )
+                        if i2 == cur_word or (
+                            recs
+                            and max(abs(a - b) for a, b in recs) >= 0.5
+                        ):
+                            dock_split[i2] = recs
+
             for i, span in enumerate(spans):
                 if not pulsing:
                     # Sync disabled: static intonation geometry (fallback).
-                    geometry = self._geometry_tags(span)
-                elif i == cur_word:
+                    _emit(span["text"], white + self._geometry_tags(span))
+                    continue
+                if i in dock_split:
+                    # Dock-magnification emission: per-letter elevation
+                    # (his rule 2026-11-22: like the MacBook dock - each
+                    # letter's lift falls off smoothly with its distance
+                    # from the spoken position, so the ripple flows
+                    # letter by letter, never in syllable chunks).
+                    recs = dock_split[i]
+                    units = letter_units[i]
+                    if i == cur_word:
+                        size_tags = self._pulse_up_tags(
+                            span,
+                            box_base_fs,
+                            duration_ms,
+                            first_of_word=cur_syl in (None, 0),
+                            grow_from=_esc(span, start),
+                            grow_to=_esc(span, min(end, span["word"].end)),
+                            grow_ms=round(
+                                (min(end, span["word"].end) - start) * 1000.0
+                            ),
+                        )
+                    elif cur_word is not None and i == cur_word - 1:
+                        size_tags = self._pulse_down_tags(
+                            span,
+                            box_base_fs,
+                            duration_ms,
+                            from_size=_esc(span, span["word"].end),
+                        )
+                    else:
+                        size_tags = _baseline_geometry()
+                    runs: list[list] = []
+                    for j2, chunk in enumerate(units):
+                        e0, e1 = recs[j2] if j2 < len(recs) else (0.0, 0.0)
+                        if i == cur_word:
+                            # Letter-granular sync (their film colors
+                            # letter by letter): the letter joins the
+                            # spoken color at the moment the cursor
+                            # reaches it, with a short fade.
+                            n_l = len(units)
+                            w_dur = max(
+                                1e-6,
+                                float(span["word"].end)
+                                - float(span["word"].start),
+                            )
+                            t_on = float(span["word"].start) + (
+                                (j2 / n_l) * w_dur if n_l > 1 else 0.0
+                            )
+                            t_rel = (t_on - start) * 1000.0
+                            if t_on < start - 1e-9:
+                                tag = f"\\c{speaker_color}&{ital}" + size_tags
+                            elif t_rel >= duration_ms:
+                                tag = white + size_tags
+                            else:
+                                tag = white + size_tags + (
+                                    f"\\t({int(t_rel)},"
+                                    f"{int(t_rel + LETTER_SWEEP_FADE_MS)},"
+                                    f"\\c{speaker_color}&\\alpha&H00&{ital})"
+                                )
+                        else:
+                            tag = f"\\c{speaker_color}&{ital}" + size_tags
+                        th0 = math.degrees(e0 / org_distance)
+                        th1 = math.degrees(e1 / org_distance)
+                        if abs(e0) >= 0.5 or abs(e1) >= 0.5:
+                            tag += f"\\org(-100000,{org_y})\\frz{th0:.5f}"
+                            if abs(th1 - th0) > 1e-6:
+                                tag += _glide_frz(0, glide_ms, th0, th1)
+                        if runs and runs[-1][1] == tag:
+                            runs[-1][0] += chunk
+                        else:
+                            runs.append([chunk, tag])
+                    for chunk, tag in runs:
+                        _emit(chunk, tag)
+                    continue
+                # Unsplit words: word-level size geometry as before.
+                if i == cur_word:
                     # The spoken moment: scale up from baseline to the
                     # word's intonation geometry right at its onset
                     # (user rules 2026-11-22: "pop/scale up when it's
@@ -1127,7 +1425,7 @@ class CwiRenderer:
                             2: WAVE_TAIL_STEP_1,
                             3: WAVE_TAIL_STEP_2,
                         }.get(age)
-                        glide_ms = min(TAIL_GLIDE_MS, duration_ms / 2)
+                        tail_glide_ms = min(TAIL_GLIDE_MS, duration_ms / 2)
                         syl_mode = bool(
                             getattr(event.style, "syllable_mode", False)
                         )
@@ -1163,7 +1461,7 @@ class CwiRenderer:
                                         org_distance,
                                         scale=tail,
                                         from_scale=from_tail,
-                                        glide_ms=glide_ms,
+                                        glide_ms=tail_glide_ms,
                                     )
                                     if p
                                     else ""
@@ -1183,7 +1481,7 @@ class CwiRenderer:
                                     org_distance,
                                     scale=tail,
                                     from_scale=from_tail,
-                                    glide_ms=glide_ms,
+                                    glide_ms=tail_glide_ms,
                                 )
                                 if p
                                 else ""
@@ -1193,141 +1491,13 @@ class CwiRenderer:
                                 f"\\c{speaker_color}&{ital}{geometry}" + hold,
                             )
                 else:
-                    # Current word at its onset.
-                    word = span["word"]
-                    syllables = (
-                        word.syllables
-                        if (cur_syl is not None and word.syllables)
-                        else None
+                    # Current word without letter data (no units): plain
+                    # onset coloring (defensive; dock_split covers all
+                    # real words).
+                    _emit(
+                        span["text"],
+                        f"\\c{speaker_color}&{ital}{geometry}",
                     )
-                    if not syllables:
-                        pop = self._pop_tags(
-                            span,
-                            event.style.pop_scale,
-                            duration_ms,
-                            org_y,
-                            org_distance,
-                            pitch_hz=word.pitch_hz,
-                        )
-                        # Sustained loud word (launch film WHOOOOOA):
-                        # the sync keeps sweeping letter by letter
-                        # through the scaled-up hold, tracking the
-                        # scream's progress (user rule 2026-11-22).
-                        hold_s = word_end_t - start
-                        # Sweep units: one per non-space letter (spaces
-                        # ride along with their neighbor so per-letter
-                        # pitch data aligns to the word's letters).
-                        units: list[tuple[str, int]] = []
-                        pending_ws = ""
-                        for ch in span["text"]:
-                            if ch.isspace():
-                                pending_ws += ch
-                                continue
-                            units.append((pending_ws + ch, len(units)))
-                            pending_ws = ""
-                        if pending_ws and units:
-                            prev, pidx = units[-1]
-                            units[-1] = (prev + pending_ws, pidx)
-                        n_letters = len(units)
-                        if (
-                            hold_s > 0
-                            and span["size_px"] >= esc_gate_px
-                            and hold_s
-                            >= LETTER_SWEEP_MIN_PER_LETTER_S
-                            * max(2, n_letters)
-                        ):
-                            per_ms = hold_s * 1000.0 / n_letters
-                            pitches = word.letter_pitches or []
-                            for ch, li in units:
-                                t_on = int(li * per_ms)
-                                sweep = (
-                                    f"\\t({t_on},"
-                                    f"{t_on + LETTER_SWEEP_FADE_MS},"
-                                    f"\\c{speaker_color}&\\alpha&H00&)"
-                                )
-                                # Scaled-up text follows the wave too
-                                # (user rule 2026-11-22): each letter
-                                # rides the voice pitch at its spot in
-                                # the word while the whole word grows.
-                                lp = (
-                                    pitches[li] if li < len(pitches) else None
-                                )
-                                letter_pop = (
-                                    self._pop_tags(
-                                        span,
-                                        event.style.pop_scale,
-                                        duration_ms,
-                                        org_y,
-                                        org_distance,
-                                        pitch_hz=lp,
-                                    )
-                                    if lp
-                                    else pop
-                                )
-                                _emit(
-                                    ch,
-                                    white + geometry + letter_pop + sweep,
-                                )
-                        else:
-                            _emit(
-                                span["text"],
-                                f"\\c{speaker_color}&{ital}{geometry}" + pop,
-                            )
-                    else:
-                        # Syllable variation: color in syllable by syllable,
-                        # unspoken syllables stay read-ahead white.
-                        k = span["text"].find(word.text)
-                        if k >= 0:
-                            prefix = span["text"][:k]
-                            suffix = span["text"][k + len(word.text):]
-                        else:
-                            prefix, suffix = "", ""
-                        for j, syl in enumerate(syllables):
-                            syl_text = syl.get("text", "")
-                            if j == 0:
-                                syl_text = prefix + syl_text
-                            if j == len(syllables) - 1:
-                                syl_text += suffix
-                            if j < cur_syl:
-                                pitch = syl.get("pitch_hz")
-                                if pitch:
-                                    # Mid-word pitch contour: spoken
-                                    # syllables hold their pitch offset.
-                                    hold = self._pitch_hold_tags(
-                                        span, pitch, org_y, org_distance
-                                    )
-                                else:
-                                    hold = (
-                                        self._settle_tags(
-                                            span,
-                                            event.style.pop_scale,
-                                            duration_ms,
-                                            org_y,
-                                            org_distance,
-                                        )
-                                        if j == cur_syl - 1
-                                        else ""
-                                    )
-                                _emit(
-                                    syl_text,
-                                    f"\\c{speaker_color}&{ital}{geometry}"
-                                    + hold,
-                                )
-                            elif j == cur_syl:
-                                _emit(
-                                    syl_text,
-                                    f"\\c{speaker_color}&{ital}{geometry}"
-                                    + self._pop_tags(
-                                        span,
-                                        event.style.pop_scale,
-                                        duration_ms,
-                                        org_y,
-                                        org_distance,
-                                        pitch_hz=syl.get("pitch_hz"),
-                                    ),
-                                )
-                            else:
-                                _emit(syl_text, white + geometry)
 
             tags = {"font": f"\\fn{CWI_FONT_FAMILY}"}
 

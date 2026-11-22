@@ -217,8 +217,12 @@ class TestWordOnsetColorSync:
         # Speaker color (yellow #E5E517 -> BGR &H17E5E5) appears at onsets.
         assert "\\c&H17E5E5&" in hello_line
         assert "\\c&H17E5E5&" in world_line
-        assert "Hello" in hello_line
-        assert "world" in world_line
+        # The spoken word's letters are all present (the dock wave emits
+        # the current word letter by letter).
+        for letter in "Hello":
+            assert letter in hello_line
+        for letter in "world":
+            assert letter in world_line
 
     def test_word_color_speaker_assigned(self):
         """Words should have speaker color, not white."""
@@ -1053,12 +1057,16 @@ class TestStyleDrivenRendering:
         renderer = CwiRenderer(project)
         ass = renderer.render_ass("dummy.mp4")
 
-        # 1.5 rise = 50% elevation on a 54px span at ~100960px radius
+        # 1.5 rise = 50% elevation on a 54px span at ~100960px radius:
+        # the crest letter reaches the full elevation at the cursor.
         assert "\\frz0.01532" in ass
-        # The settle S-curves back to flat; the default elevation's
-        # S-curve midpoint (0.00383) never appears because the rise is
-        # twice as high.
-        assert "\\frz0.00383" not in ass
+        import re as _re
+        vals = {
+            float(m.group(1))
+            for m in _re.finditer(r"\\frz(-?[0-9]+(?:\.[0-9]+)?)", ass)
+        }
+        # Everything else is the falloff/glide underneath the crest.
+        assert max(vals) == 0.01532
     def test_custom_read_ahead_opacity(self):
         """Renderer uses event.style.read_ahead_opacity, not hardcoded 0.90."""
         events = [
@@ -1728,17 +1736,47 @@ class TestPitchContour:
         return vals
 
     def test_pitch_offsets_syllables_vertically(self):
-        """High and low pitches land at different heights."""
+        """High-pitch letters crest above the plain pop elevation while
+        baseline-pitch letters top out at the plain pop."""
+        import math
         vals = self._frz_values(self._pitch_ass(with_pitch=True))
-        assert any(v > 0 for v in vals), f"expected a rise, got {vals}"
+        pop_only = math.degrees(0.25 * 54 / 100960.0)  # 0.00766
+        assert max(vals) > pop_only, f"250Hz letters should ride higher: {vals}"
+        assert any(abs(v - pop_only) < 5e-4 for v in vals)
+
+    def test_low_pitch_word_dips_below_baseline_in_the_tail(self):
+        """A spoken low-pitch word's tail holds it under the baseline."""
+        from engine.renderer.renderer import CwiRenderer
+        events = [
+            {
+                "id": "evt_dip",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 2.0,
+                "speaker_id": "spk_1",
+                "text": "low high",
+                "words": [
+                    {"text": "low", "start": 0.0, "end": 0.5,
+                     "pitch_hz": 110.0},
+                    {"text": "high", "start": 0.5, "end": 1.0,
+                     "pitch_hz": 250.0},
+                ],
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "S", "category": "main", "color": "#E5E517"}]
+        project = _make_project(events=events, speakers=speakers)
+        vals = self._frz_values(CwiRenderer(project).render_ass("dummy.mp4"))
         assert any(v < 0 for v in vals), f"expected a dip, got {vals}"
+        assert any(v > 0 for v in vals), f"expected a rise, got {vals}"
 
     def test_no_pitch_data_no_contour(self):
         """Without pitch data syllables only do the pop elevation."""
         vals = self._frz_values(self._pitch_ass(with_pitch=False))
-        # The 25% pop elevation, its S-curve settle midpoint, and
-        # nothing else (no pitch offsets).
-        assert vals == {0.00766, 0.00383}
+        # The crest letter tops out at exactly the 25% pop elevation;
+        # every other value is the dock falloff/glide underneath it (no
+        # pitch offsets exist without pitch data).
+        assert max(vals) == 0.00766
+        assert all(0 <= v <= 0.00766 for v in vals)
 
 
 # ─── Sustained-word letter sync sweep ──────────────────
@@ -1776,23 +1814,27 @@ class TestLetterSweepSync:
         assert "\\t(0,40,\\c&H17E5E5&\\alpha&H00&)" in ass
         assert "\\t(250,290,\\c&H17E5E5&\\alpha&H00&)" in ass
         assert "\\t(1750,1790,\\c&H17E5E5&\\alpha&H00&)" in ass
-        # One sweep transform per letter.
-        assert ass.count(",\\c&H17E5E5&\\alpha&H00&)") == 8
+        # One sweep transform per letter of both words (8 + 5).
+        assert ass.count(",\\c&H17E5E5&\\alpha&H00&)") == 13
 
     def test_swept_letters_start_in_read_ahead_white(self):
         """Before its sweep moment each letter stays read-ahead white."""
         ass = self._scream_ass()
         assert "\\c&HFFFFFF&" in ass
 
-    def test_short_loud_word_colors_at_once(self):
-        """A loud word too short for a readable sweep stays whole."""
+    def test_short_loud_word_sweeps_within_its_window(self):
+        """A short loud word sweeps too, compressed into its window
+        (letter-granular sync, their film)."""
         ass = self._scream_ass(word_end=0.3)
-        assert ",\\c&H17E5E5&\\alpha&H00&)" not in ass
+        # 8 letters over 300ms: the last letter flips at 262ms.
+        assert "\\t(262,302,\\c&H17E5E5&\\alpha&H00&)" in ass
 
-    def test_normal_word_does_not_letter_sweep(self):
-        """Words under the loudness gate keep word-level sync."""
+    def test_normal_word_sweeps_without_growing(self):
+        """Words under the loudness gate sweep letter by letter like
+        every word, but never escalate in size."""
         ass = self._scream_ass(size_pct=5.0)
-        assert ",\\c&H17E5E5&\\alpha&H00&)" not in ass
+        assert ",\\c&H17E5E5&\\alpha&H00&)" in ass
+        assert "\\t(120,2000,\\fs" not in ass
 
 
 class TestScaledTextFollowsWave:
@@ -1844,7 +1886,7 @@ class TestScaledTextFollowsWave:
     def test_letter_sweep_still_applies_with_pitches(self):
         """The color sweep and the wave compose: both transforms exist."""
         ass = self._ass([200.0, 220.0, 180.0, 160.0, 200.0, 220.0, 240.0, 190.0])
-        assert ass.count(",\\c&H17E5E5&\\alpha&H00&)") == 8
+        assert ass.count(",\\c&H17E5E5&\\alpha&H00&)") == 13
 
     def test_no_pitches_keeps_plain_pop(self):
         """Without letter pitch data the sweep is unchanged."""
