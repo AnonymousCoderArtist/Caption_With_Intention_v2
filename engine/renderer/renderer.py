@@ -1163,8 +1163,15 @@ class CwiRenderer:
         Like SFX, music is non-dialogue and stacks above dialogue lines
         (margin_v lifts it; box layer 2, text layer 3).
         """
+        # Spec section 2.4.5: the music symbol goes on either side of the
+        # description (white, unanimated). Brackets are the SFX convention
+        # (2.4.4), so strip them when wrapping with the symbol.
+        text = (event.text or "").strip()
+        if text and "\u266a" not in text:
+            text = text.strip("[] ")
+            text = f"\u266a {text} \u266a"
         box = self._build_box_line(
-            event.start, event.end, event.text or "", [], event.id, margin_v
+            event.start, event.end, text, [], event.id, margin_v
         )
         box["layer"] = 2
         return [
@@ -1172,7 +1179,7 @@ class CwiRenderer:
             {
                 "start": event.start,
                 "end": event.end,
-                "text": event.text or "",
+                "text": text,
                 "type": "music",
                 "margin_v": margin_v,
                 "tags": {

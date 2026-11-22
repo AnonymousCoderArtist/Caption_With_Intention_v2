@@ -659,6 +659,57 @@ class TestMusicRules:
         music_lines = [l for l in ass.split("\n") if l.startswith("Dialogue: 3,") and "synth" in l]
         assert len(music_lines) == 1, f"Music should be one line, got: {len(music_lines)}"
 
+    def test_music_symbol_wrapping(self):
+        """Spec section 2.4.5: the music symbol goes on either side of the description."""
+        events = [
+            {
+                "id": "evt_1",
+                "type": "music",
+                "start": 0.0,
+                "end": 3.0,
+                "speaker_id": None,
+                "text": "Soft piano",
+            },
+        ]
+        project = _make_project(events=events)
+        ass = CwiRenderer(project).render_ass("dummy.mp4")
+        assert "\u266a Soft piano \u266a" in ass
+
+    def test_music_symbol_not_doubled(self):
+        """Text that already carries the music symbol is left alone."""
+        events = [
+            {
+                "id": "evt_1",
+                "type": "music",
+                "start": 0.0,
+                "end": 3.0,
+                "speaker_id": None,
+                "text": "\u266a Soft piano \u266a",
+            },
+        ]
+        project = _make_project(events=events)
+        ass = CwiRenderer(project).render_ass("dummy.mp4")
+        # Two symbols per rendered line, box companion line + text line.
+        assert ass.count("\u266a") == 4
+        assert "\u266a \u266a" not in ass
+
+    def test_music_brackets_become_symbols(self):
+        """Brackets are the SFX convention (2.4.4); music uses the symbol instead."""
+        events = [
+            {
+                "id": "evt_1",
+                "type": "music",
+                "start": 0.0,
+                "end": 3.0,
+                "speaker_id": None,
+                "text": "[jazz playing]",
+            },
+        ]
+        project = _make_project(events=events)
+        ass = CwiRenderer(project).render_ass("dummy.mp4")
+        assert "\u266a jazz playing \u266a" in ass
+        assert "[jazz playing]" not in ass
+
 
 # ─── Two Lines Enforcement ────────────────────────────
 
