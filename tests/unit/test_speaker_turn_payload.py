@@ -1,6 +1,7 @@
 """Speaker turns remain distinct during the editor handoff."""
 from engine.asr.models import Word
 
+
 def test_sentence_is_split_at_word_speaker_turns():
     from engine.asr.models import Segment, TranscriptionResult
     from engine.speech.pipeline import SpeechPipeline
