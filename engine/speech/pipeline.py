@@ -515,76 +515,58 @@ class SpeechPipeline:
             return d
 
         entries: list[dict] = []
+
+        def append_turns(turn_words, first_idx, text, start, end):
+            # ASR sentence boundaries need not be speaker boundaries.
+            # Never majority-vote an entire sentence into one speaker's
+            # color when its word attribution contains a turn change.
+            runs: list[tuple[int, int]] = []
+            left = 0
+            for right in range(1, len(turn_words)):
+                if turn_words[right].speaker_id != turn_words[right - 1].speaker_id:
+                    runs.append((left, right))
+                    left = right
+            runs.append((left, len(turn_words)))
+            for lo, hi in runs:
+                run = turn_words[lo:hi]
+                confs = [w.confidence for w in run if w.confidence > 0]
+                split = len(runs) > 1
+                run_start = run[0].start if split else start
+                entries.append(
+                    {
+                        "text": (
+                            " ".join(w.text.strip() for w in run)
+                            if split else text or " ".join(w.text.strip() for w in run)
+                        ),
+                        "start": round(run_start, 4),
+                        "end": round(max(w.end for w in run) if split else end, 4),
+                        "words": [
+                            _word_payload(w, first_idx + lo + k)
+                            for k, w in enumerate(run)
+                        ],
+                        "confidence": round(sum(confs) / len(confs), 4) if confs else None,
+                        "source_model": model,
+                        "source_timestamp": round(run_start, 4),
+                        "speaker_id": run[0].speaker_id,
+                    }
+                )
+
         segments = transcription.segments or []
         word_starts = [w.start for w in words]
-
         if segments:
             for seg in segments:
-                # Words belong to the segment whose range contains their
-                # onset — O(log W) lookup instead of O(W) per segment
+                # Word onsets select their ASR sentence in O(log W).
                 lo = bisect.bisect_left(word_starts, seg.start)
                 hi = bisect.bisect_left(word_starts, seg.end)
                 seg_words = words[lo:hi]
                 if not seg_words and seg.words:
                     seg_words = list(seg.words)
-                if not seg_words:
-                    continue
-
-                entry_words: list[dict] = []
-                speaker_votes: dict[str, int] = {}
-                for k, w in enumerate(seg_words):
-                    entry_words.append(_word_payload(w, lo + k))
-                    if w.speaker_id:
-                        speaker_votes[w.speaker_id] = (
-                            speaker_votes.get(w.speaker_id, 0) + 1
-                        )
-
-                confs = [w.confidence for w in seg_words if w.confidence > 0]
-                entries.append(
-                    {
-                        "text": seg.text or " ".join(w.text for w in seg_words),
-                        "start": round(seg.start, 4),
-                        "end": round(seg.end, 4),
-                        "words": entry_words,
-                        "confidence": (
-                            round(sum(confs) / len(confs), 4) if confs else None
-                        ),
-                        "source_model": model,
-                        "source_timestamp": round(seg.start, 4),
-                        "speaker_id": (
-                            max(speaker_votes, key=speaker_votes.get)
-                            if speaker_votes
-                            else None
-                        ),
-                    }
-                )
+                if seg_words:
+                    append_turns(seg_words, lo, seg.text, seg.start, seg.end)
         elif words:
-            # No segments — one event from the full word list
-            confs = [w.confidence for w in words if w.confidence > 0]
-            speaker_votes: dict[str, int] = {}
-            for w in words:
-                if w.speaker_id:
-                    speaker_votes[w.speaker_id] = (
-                        speaker_votes.get(w.speaker_id, 0) + 1
-                    )
-            entries.append(
-                {
-                    "text": transcription.text,
-                    "start": round(min(w.start for w in words), 4),
-                    "end": round(max(w.end for w in words), 4),
-                    "words": [
-                        _word_payload(w, idx) for idx, w in enumerate(words)
-                    ],
-                    "confidence": (
-                        round(sum(confs) / len(confs), 4) if confs else None
-                    ),
-                    "source_model": model,
-                    "speaker_id": (
-                        max(speaker_votes, key=speaker_votes.get)
-                        if speaker_votes
-                        else None
-                    ),
-                }
+            append_turns(
+                words, 0, transcription.text,
+                min(w.start for w in words), max(w.end for w in words),
             )
 
         # Ensure every referenced speaker id exists in the speaker list
