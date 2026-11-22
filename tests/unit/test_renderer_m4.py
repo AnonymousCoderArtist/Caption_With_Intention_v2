@@ -1055,8 +1055,10 @@ class TestStyleDrivenRendering:
 
         # 1.5 rise = 50% elevation on a 54px span at ~100960px radius
         assert "\\frz0.01532" in ass
-        # Default 25% elevation (theta 0.00766) should NOT be present
-        assert "\\frz0.00766" not in ass
+        # The settle S-curves back to flat; the default elevation's
+        # S-curve midpoint (0.00383) never appears because the rise is
+        # twice as high.
+        assert "\\frz0.00383" not in ass
     def test_custom_read_ahead_opacity(self):
         """Renderer uses event.style.read_ahead_opacity, not hardcoded 0.90."""
         events = [
@@ -1579,8 +1581,9 @@ class TestSustainedEscalation:
     def test_sustained_loud_word_grows(self):
         """After the onset pop, a second transform ramps the size up."""
         ass = self._scream_ass()
-        # Pop transform reaches the loud size (9% of 1080 = 97px)...
-        assert "\\t(0,120,\\fs97" in ass
+        # Pop transform reaches the loud size (9% of 1080 = 97px),
+        # easing out onto it...
+        assert "\\t(0,120,0.45,\\fs97" in ass
         # ...then the escalation ramp keeps growing to the 12% cap (130px).
         assert "\\t(120,2000,\\fs130)" in ass
 
@@ -1598,7 +1601,10 @@ class TestSustainedEscalation:
     def test_settle_starts_from_escalated_size(self):
         """The scale-down begins at the size reached at the word's end."""
         ass = self._scream_ass()
-        assert "\\fs130\\b0\\frz0\\t(0,180,\\fs54\\b0)" in ass
+        assert (
+            "\\fs130\\b0\\frz0\\t(0,90,2.2,\\fs92)\\t(90,180,0.45,\\fs54\\b0)"
+            in ass
+        )
 
 
 # ─── Simultaneous Speakers ─────────────────────────────
@@ -1730,7 +1736,9 @@ class TestPitchContour:
     def test_no_pitch_data_no_contour(self):
         """Without pitch data syllables only do the pop elevation."""
         vals = self._frz_values(self._pitch_ass(with_pitch=False))
-        assert len(vals) == 1  # the 25% pop elevation only
+        # The 25% pop elevation, its S-curve settle midpoint, and
+        # nothing else (no pitch offsets).
+        assert vals == {0.00766, 0.00383}
 
 
 # ─── Sustained-word letter sync sweep ──────────────────

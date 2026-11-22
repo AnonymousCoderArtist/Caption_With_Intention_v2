@@ -181,3 +181,40 @@ class TestPipelineContourWiring:
             audio, SR, 0.0, 1.2, " WHOA", size_pct=9.0, syllable_count=1
         )
         assert lp is not None and len(lp) == 4
+
+
+class TestSmoothWave:
+    def test_octave_spike_removed_edge_glide_kept(self):
+        from engine.audio_analysis.pitch_contour import smooth_wave
+
+        contours = [
+            {"pitch_hz": 150.0},
+            {"pitch_hz": 310.0},  # octave-up spike
+            {"pitch_hz": 148.0},
+            {"pitch_hz": 146.0},
+            {"pitch_hz": 100.0},  # edge: genuine glide down, must survive
+        ]
+        smooth_wave(contours)
+        assert contours[1]["pitch_hz"] < 200.0  # spike pulled to neighbors
+        assert contours[4]["pitch_hz"] == 100.0  # edge untouched
+        assert contours[0]["pitch_hz"] == 150.0  # edge untouched
+
+    def test_unvoiced_points_stay_none(self):
+        from engine.audio_analysis.pitch_contour import smooth_wave
+
+        contours = [{"pitch_hz": 150.0}, {"pitch_hz": None}, {"pitch_hz": 160.0}]
+        smooth_wave(contours)
+        assert contours[1]["pitch_hz"] is None
+
+    def test_syllable_points_smoothed_in_place(self):
+        from engine.audio_analysis.pitch_contour import smooth_wave
+
+        contours = [
+            {"syllables": [{"text": "a", "pitch_hz": 150.0},
+                           {"text": "b", "pitch_hz": 300.0},
+                           {"text": "c", "pitch_hz": 150.0}]},
+            {"pitch_hz": 148.0},
+        ]
+        smooth_wave(contours)
+        syls = contours[0]["syllables"]
+        assert syls[1]["pitch_hz"] < 200.0

@@ -53,6 +53,10 @@ class Word(BaseModel):
     # single syllable (user rule 2026-11-22: scaled-up text follows
     # the wave too). Filled by the analysis pipeline.
     letter_pitches: Optional[list[Optional[float]]] = None
+    # Word-level pitch in Hz: the word's spot on the event's pitch
+    # wave (launch film: the whole caption line rides one continuous
+    # voice-pitch ripple). Filled by the analysis pipeline.
+    pitch_hz: Optional[float] = None
 
 
 class Style(BaseModel):

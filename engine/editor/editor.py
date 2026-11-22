@@ -47,6 +47,7 @@ _WORD_FIELDS = {
     "manual_override",
     "syllables",
     "letter_pitches",
+    "pitch_hz",
 }
 
 

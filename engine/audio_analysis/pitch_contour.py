@@ -120,3 +120,64 @@ def letter_pitches_for_word(
     if voiced == 0:
         return None
     return pitches
+
+
+def smooth_wave(contours: list[dict]) -> list[dict]:
+    """Smooth the event's pitch points into one continuous wave.
+
+    The launch film's caption line rides a single connected ripple:
+    syllable and word offsets flow smoothly across word boundaries.
+    Raw per-span pitch estimates carry octave jumps and dropouts, so
+    the sequence of wave points (syllable pitches where present, else
+    the word's pitch) is median-filtered (kills octave spikes) then
+    lightly averaged with its neighbors. Unvoiced points (None) stay
+    None and are skipped by the filters.
+
+    Mutates and returns the contours list.
+    """
+    # Flatten to the ordered wave-point sequence with back-references.
+    points: list[tuple[str, object, int]] = []  # (kind, owner, index)
+    values: list[Optional[float]] = []
+    for ci, c in enumerate(contours):
+        if c.get("syllables"):
+            for si, s in enumerate(c["syllables"]):
+                points.append(("syl", c, si))
+                values.append(s.get("pitch_hz"))
+        else:
+            points.append(("word", c, ci))
+            values.append(c.get("pitch_hz"))
+
+    n = len(values)
+    if n < 3:
+        return contours
+
+    # Median filter (window 3) over voiced neighbors kills octave
+    # spikes while preserving real glides. Only interior points (voiced
+    # neighbors on BOTH sides) are filtered: at the edges of a voiced
+    # run a two-point median would blur a genuine glide.
+    def _voiced_neighbors(vals: list[Optional[float]], i: int) -> list[float]:
+        if i <= 0 or i >= len(vals) - 1:
+            return []
+        if vals[i - 1] is None or vals[i + 1] is None or vals[i] is None:
+            return []
+        return [vals[i - 1], vals[i], vals[i + 1]]  # type: ignore[list-item]
+
+    med: list[Optional[float]] = list(values)
+    for i in range(n):
+        neigh = _voiced_neighbors(values, i)
+        if neigh:
+            med[i] = float(np.median(neigh))
+
+    # Light moving average for smooth connections (same edge rule).
+    smoothed: list[Optional[float]] = list(med)
+    for i in range(n):
+        neigh = _voiced_neighbors(med, i)
+        if neigh:
+            smoothed[i] = sum(neigh) / len(neigh)
+
+    for (kind, owner, idx), val in zip(points, smoothed):
+        if kind == "syl":
+            owner["syllables"][idx]["pitch_hz"] = val  # type: ignore[index]
+        else:
+            owner["pitch_hz"] = val
+    return contours

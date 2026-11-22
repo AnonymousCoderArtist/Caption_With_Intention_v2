@@ -24,6 +24,7 @@ from __future__ import annotations
 import bisect
 import logging
 import re
+import statistics
 from concurrent.futures import ThreadPoolExecutor
 from itertools import pairwise
 from pathlib import Path
@@ -311,6 +312,7 @@ class SpeechPipeline:
         from engine.audio_analysis.pitch_contour import (
             attach_syllable_pitch,
             letter_pitches_for_word,
+            smooth_wave,
         )
 
         words = result["transcription"].words
@@ -380,6 +382,18 @@ class SpeechPipeline:
                 if ws.use_syllable_animation
                 else None
             )
+            if syllables:
+                # The word's own wave point is its syllables' median.
+                syl_pitches = [
+                    s["pitch_hz"] for s in syllables if s.get("pitch_hz")
+                ]
+                word_pitch = (
+                    float(statistics.median(syl_pitches))
+                    if syl_pitches
+                    else None
+                )
+            else:
+                word_pitch = None
             size_pct = None
             if intonation_words and i < len(intonation_words):
                 size_pct = intonation_words[i].get("typography", {}).get(
@@ -396,10 +410,19 @@ class SpeechPipeline:
                     float(size_pct),
                     syllable_count=len(ws.syllables),
                 )
+            if word_pitch is None and intonation_words and i < len(
+                intonation_words
+            ):
+                word_pitch = intonation_words[i].get("pitch_hz")
             contours.append(
-                {"syllables": syllables, "letter_pitches": letter_pitches}
+                {
+                    "syllables": syllables,
+                    "letter_pitches": letter_pitches,
+                    "pitch_hz": word_pitch,
+                }
             )
 
+        smooth_wave(contours)
         result["contours"] = contours
         n_syl = sum(1 for c in contours if c["syllables"])
         n_letters = sum(1 for c in contours if c["letter_pitches"])
@@ -487,6 +510,8 @@ class SpeechPipeline:
                     d["syllables"] = contours[idx]["syllables"]
                 if contours[idx].get("letter_pitches"):
                     d["letter_pitches"] = contours[idx]["letter_pitches"]
+                if contours[idx].get("pitch_hz") is not None:
+                    d["pitch_hz"] = contours[idx]["pitch_hz"]
             return d
 
         entries: list[dict] = []

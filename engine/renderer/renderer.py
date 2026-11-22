@@ -79,6 +79,25 @@ POP_OUT_MS = 180
 PITCH_BASELINE_HZ = 180.0
 PITCH_SPAN_HZ = 70.0
 PITCH_RISE_MAX = 0.25
+
+# Traveling-wave tail (his rule 2026-11-22: "as the speaker is
+# speaking the words come up with synchronisation and then come down
+# and the next comes up, like a wave"): a spoken word keeps this
+# fraction of its wave offset one word back, then the smaller step
+# two words back, then returns to the baseline.
+WAVE_TAIL_STEP_1 = 0.6
+WAVE_TAIL_STEP_2 = 0.3
+# Motion easing (his note 2026-11-22: the render feels stepped next to
+# their film's smooth motion). libass \t accel: <1 eases out (fast
+# start, soft landing), >1 eases in. Rises ease out; settles and tail
+# glides run as S-curves (slow start AND soft landing) via two chained
+# transforms, so no motion ever starts or stops abruptly.
+EASE_OUT = 0.45
+EASE_IN = 2.2
+# Tail glide: a spoken word's wave offset decays 60% -> 30% -> flat as
+# the following words rise; each step is an eased glide of this length
+# (capped to half the interval), not a jump at the next word's onset.
+TAIL_GLIDE_MS = 240
 # Sustained loud words (escalation gate, launch film WHOOOOOA): the
 # sync keeps sweeping through the word while it is held scaled up
 # (user rule 2026-11-22: "the synchronisation of scaled up word
@@ -92,6 +111,25 @@ def _pitch_offset_px(pitch_hz: float, size_px: int) -> float:
     """Vertical pixel offset for a pitch, relative to the baseline."""
     rel = max(-1.0, min(1.0, (pitch_hz - PITCH_BASELINE_HZ) / PITCH_SPAN_HZ))
     return rel * PITCH_RISE_MAX * size_px
+
+
+def _glide_frz(t0_ms: float, t1_ms: float, theta0: float, theta1: float) -> str:
+    """S-curved rotation transform from theta0 to theta1 degrees.
+
+    Two chained transforms - ease-in to the midpoint, then ease-out to
+    the target - so the motion starts and lands softly instead of the
+    abrupt linear ramp that reads as a jump on film.
+    """
+    t0 = int(max(0, t0_ms))
+    t1 = int(max(t0 + 1, t1_ms))
+    if t1 - t0 < 4:
+        return f"\\t({t0},{t1},\\frz{theta1:.5f})"
+    mid_t = (t0 + t1) // 2
+    mid = (theta0 + theta1) / 2.0
+    return (
+        f"\\t({t0},{mid_t},{EASE_IN},\\frz{mid:.5f})"
+        f"\\t({mid_t},{t1},{EASE_OUT},\\frz{theta1:.5f})"
+    )
 
 
 # Spec section 2.4.1: very loud or sudden bursts of speech may break out
@@ -537,7 +575,7 @@ class CwiRenderer:
             return loud + "\\frz0"
         loud = f"\\fs{span['size_px']}{span['bold']}{width_tag}"
         t1 = int(min(POP_IN_MS, max(1.0, duration_ms / 2)))
-        tags = f"\\fs{base_fs}\\b0\\frz0\\t(0,{t1},{loud})"
+        tags = f"\\fs{base_fs}\\b0\\frz0\\t(0,{t1},{EASE_OUT},{loud})"
         if grow_to > span["size_px"] and grow_ms > t1:
             tags += f"\\t({t1},{grow_ms},\\fs{grow_to})"
         return tags
@@ -557,7 +595,15 @@ class CwiRenderer:
         if span["width"] != 100:
             settle += "\\fscx100"
         t2 = int(min(POP_OUT_MS, max(1.0, duration_ms / 2)))
-        return f"{loud}\\t(0,{t2},{settle})"
+        half = max(1, t2 // 2)
+        mid = f"\\fs{round((size + base_fs) / 2)}"
+        if span["width"] != 100:
+            mid += f"\\fscx{round((span['width'] + 100) / 2)}"
+        # S-curve: ease in to the midpoint, ease out onto the baseline.
+        return (
+            f"{loud}\\t(0,{half},{EASE_IN},{mid})"
+            f"\\t({half},{t2},{EASE_OUT},{settle})"
+        )
 
     def _pulse_down_box_tags(
         self, span: dict, base_fs: int, duration_ms: float, from_size: int = 0
@@ -575,7 +621,7 @@ class CwiRenderer:
         if fsp < 0.5:
             return ""
         t2 = int(min(POP_OUT_MS, max(1.0, duration_ms / 2)))
-        return f"\\t(0,{t2},\\fsp0)"
+        return f"\\t(0,{t2},{EASE_OUT},\\fsp0)"
 
     def _pop_tags(
         self,
@@ -615,7 +661,10 @@ class CwiRenderer:
         theta_deg = math.degrees(elevation_px / org_distance)
         # org sits a fixed 100000px left of the line start; org_distance
         # (100000 + half screen width) approximates the span radius.
-        return f"\\org(-100000,{org_y})" f"\\t(0,{t1},\\frz{theta_deg:.5f})"
+        return (
+            f"\\org(-100000,{org_y})"
+            f"\\t(0,{t1},{EASE_OUT},\\frz{theta_deg:.5f})"
+        )
 
     def _settle_tags(
         self,
@@ -624,22 +673,32 @@ class CwiRenderer:
         duration_ms: float,
         org_y: int,
         org_distance: float,
+        pitch_hz: Optional[float] = None,
+        tail_scale: float = WAVE_TAIL_STEP_1,
     ) -> str:
         """Settle transform for the unit whose window just ended: starts
-        at the held elevation and returns to the baseline over
-        POP_OUT_MS (the word 'comes back to og position after it's
-        spoken')."""
+        at the held elevation and eases back over POP_OUT_MS. The target
+        is tail_scale of the word's pitch-wave offset (the traveling
+        ripple's first tail step by default, 0 at the end of speech,
+        where the whole line relaxes onto the baseline)."""
         if duration_ms <= 0 or pop_scale <= 1.0:
             return ""
         t2 = int(min(POP_OUT_MS, duration_ms / 2))
         if t2 <= 0:
             return ""
-        elevation_px = (pop_scale - 1.0) * span["size_px"]
-        theta_deg = math.degrees(elevation_px / org_distance)
+        wave_px = (
+            _pitch_offset_px(pitch_hz, span["size_px"]) if pitch_hz else 0.0
+        )
+        elevation_px = (pop_scale - 1.0) * span["size_px"] + wave_px
+        theta_start = math.degrees(elevation_px / org_distance)
+        # Traveling wave (his rule 2026-11-22: words come up as spoken,
+        # then come down and the next rises): the just-spoken word
+        # settles onto the first tail step, not its full offset.
+        theta_end = math.degrees(wave_px * tail_scale / org_distance)
         return (
             f"\\org(-100000,{org_y})"
-            f"\\frz{theta_deg:.5f}"
-            f"\\t(0,{t2},\\frz0)"
+            f"\\frz{theta_start:.5f}"
+            + _glide_frz(0, t2, theta_start, theta_end)
         )
 
     def _pitch_hold_tags(
@@ -648,15 +707,35 @@ class CwiRenderer:
         pitch_hz: float,
         org_y: int,
         org_distance: float,
+        scale: float = 1.0,
+        from_scale: Optional[float] = None,
+        glide_ms: float = 0,
     ) -> str:
-        """Static pitch-contour offset for an already-spoken syllable of
-        the current word (launch film: syllables hold the voice pitch
-        mid-word). Empty when the pitch sits on the baseline."""
-        offset_px = _pitch_offset_px(pitch_hz, span["size_px"])
-        if abs(offset_px) < 0.5:
+        """Pitch-contour offset for a spoken unit (launch film: the
+        ripple trail). scale < 1 renders the decaying tail of the
+        traveling wave. When from_scale is given and differs, the unit
+        GLIDES from that level to scale over glide_ms with an S-curve,
+        so the tail decays as continuous motion instead of stepping
+        down at each word onset. Empty when both ends sit on the
+        baseline."""
+        offset_px = _pitch_offset_px(pitch_hz, span["size_px"]) * scale
+        from_px = (
+            _pitch_offset_px(pitch_hz, span["size_px"]) * from_scale
+            if from_scale is not None
+            else offset_px
+        )
+        if abs(offset_px) < 0.5 and abs(from_px) < 0.5:
             return ""
         theta_deg = math.degrees(offset_px / org_distance)
-        return f"\\org(-100000,{org_y})\\frz{theta_deg:.5f}"
+        tags = f"\\org(-100000,{org_y})"
+        if abs(from_px - offset_px) < 0.5 or glide_ms <= 0:
+            return tags + f"\\frz{theta_deg:.5f}"
+        theta_from = math.degrees(from_px / org_distance)
+        return (
+            tags
+            + f"\\frz{theta_from:.5f}"
+            + _glide_frz(0, glide_ms, theta_from, theta_deg)
+        )
     def _sync_points(self, event: CaptionEvent) -> list[tuple[float, int, Optional[int]]]:
         """Sorted (time, word_index, syllable_index) onset points.
 
@@ -988,8 +1067,9 @@ class CwiRenderer:
                     )
                 elif cur_word is not None and i == cur_word - 1:
                     # Just finished: scale back down to its original
-                    # size/weight/width and settle back to the baseline
-                    # ("comes back to og position after it's spoken").
+                    # size/weight/width and settle back to its spot on
+                    # the pitch wave ("comes back to og position after
+                    # it's spoken"; the wave trail persists).
                     geometry = self._pulse_down_tags(
                         span,
                         box_base_fs,
@@ -1001,6 +1081,12 @@ class CwiRenderer:
                         duration_ms,
                         org_y,
                         org_distance,
+                        pitch_hz=span["word"].pitch_hz,
+                        tail_scale=(
+                            0.0
+                            if cur_word >= len(spans)
+                            else WAVE_TAIL_STEP_1
+                        ),
                     )
                 else:
                     geometry = _baseline_geometry()
@@ -1008,10 +1094,104 @@ class CwiRenderer:
                     # Unspoken (or pre-onset): read-ahead white, roman.
                     _emit(span["text"], white + geometry)
                 elif i < cur_word:
-                    # Already spoken: solid speaker color, no pop.
-                    _emit(
-                        span["text"], f"\\c{speaker_color}&{ital}{geometry}"
-                    )
+                    word = span["word"]
+                    if i == cur_word - 1 and cur_syl in (None, 0):
+                        # Just finished: geometry carries the pulse-down
+                        # + settle-to-wave transition for this interval.
+                        _emit(
+                            span["text"],
+                            f"\\c{speaker_color}&{ital}{geometry}",
+                        )
+                    else:
+                        # Already spoken: the traveling wave's tail.
+                        # One word back holds 60% of its wave offset,
+                        # two words back glides 60% -> 30%, three words
+                        # back glides 30% -> flat; at the end of speech
+                        # every word glides back to the baseline (his
+                        # rule 2026-11-22: the ripple travels with the
+                        # speech; his smoothness note: the tail decays
+                        # as continuous motion, never stepped jumps).
+                        terminal = cur_word >= len(spans)
+                        age = cur_word - i
+                        if terminal:
+                            tail = 0.0
+                        else:
+                            tail = (
+                                WAVE_TAIL_STEP_1
+                                if age == 1
+                                else WAVE_TAIL_STEP_2
+                                if age == 2
+                                else 0.0
+                            )
+                        from_tail = {
+                            2: WAVE_TAIL_STEP_1,
+                            3: WAVE_TAIL_STEP_2,
+                        }.get(age)
+                        glide_ms = min(TAIL_GLIDE_MS, duration_ms / 2)
+                        syl_mode = bool(
+                            getattr(event.style, "syllable_mode", False)
+                        )
+                        syllables = (
+                            word.syllables
+                            if (syl_mode and word.syllables)
+                            else None
+                        )
+                        if tail <= 0.0 and not from_tail:
+                            _emit(
+                                span["text"],
+                                f"\\c{speaker_color}&{ital}{geometry}",
+                            )
+                        elif syllables:
+                            k = span["text"].find(word.text)
+                            if k >= 0:
+                                prefix = span["text"][:k]
+                                suffix = span["text"][k + len(word.text):]
+                            else:
+                                prefix, suffix = "", ""
+                            for j, syl in enumerate(syllables):
+                                syl_text = syl.get("text", "")
+                                if j == 0:
+                                    syl_text = prefix + syl_text
+                                if j == len(syllables) - 1:
+                                    syl_text += suffix
+                                p = syl.get("pitch_hz")
+                                hold = (
+                                    self._pitch_hold_tags(
+                                        span,
+                                        p,
+                                        org_y,
+                                        org_distance,
+                                        scale=tail,
+                                        from_scale=from_tail,
+                                        glide_ms=glide_ms,
+                                    )
+                                    if p
+                                    else ""
+                                )
+                                _emit(
+                                    syl_text,
+                                    f"\\c{speaker_color}&{ital}{geometry}"
+                                    + hold,
+                                )
+                        else:
+                            p = word.pitch_hz
+                            hold = (
+                                self._pitch_hold_tags(
+                                    span,
+                                    p,
+                                    org_y,
+                                    org_distance,
+                                    scale=tail,
+                                    from_scale=from_tail,
+                                    glide_ms=glide_ms,
+                                )
+                                if p
+                                else ""
+                            )
+                            _emit(
+                                span["text"],
+                                f"\\c{speaker_color}&{ital}{geometry}" + hold,
+                            )
                 else:
                     # Current word at its onset.
                     word = span["word"]
@@ -1027,6 +1207,7 @@ class CwiRenderer:
                             duration_ms,
                             org_y,
                             org_distance,
+                            pitch_hz=word.pitch_hz,
                         )
                         # Sustained loud word (launch film WHOOOOOA):
                         # the sync keeps sweeping letter by letter
