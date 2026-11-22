@@ -1453,3 +1453,47 @@ class TestBreakoutException:
         project = _make_project(events=events, speakers=speakers)
         ass = CwiRenderer(project).render_ass("dummy.mp4")
         assert "CwiBox" in ass
+
+    def test_loud_sfx_breaks_out(self):
+        """Launch film: the big [GASP] (~6.7% screen height) has no box."""
+        from engine.renderer.renderer import CwiRenderer
+        events = [
+            {
+                "id": "evt_gasp",
+                "type": "sound_effect",
+                "start": 0.0,
+                "end": 1.0,
+                "speaker_id": "spk_1",
+                "text": "GASP",
+                "words": [
+                    {"text": "GASP", "start": 0.0, "end": 1.0, "size_pct": 9.0},
+                ],
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "S", "category": "main", "color": "#E5E517"}]
+        project = _make_project(events=events, speakers=speakers)
+        ass = CwiRenderer(project).render_ass("dummy.mp4")
+        box_lines = [
+            line for line in ass.split("\n")
+            if line.startswith("Dialogue:") and ",CwiBox," in line
+        ]
+        assert box_lines == []
+
+    def test_small_sfx_keeps_box(self):
+        """Launch film: small SFX like [Beep] (~4% screen height) keep the box."""
+        from engine.renderer.renderer import CwiRenderer
+        events = [
+            {
+                "id": "evt_beep",
+                "type": "sound_effect",
+                "start": 0.0,
+                "end": 1.0,
+                "text": "Beep",
+                "words": [
+                    {"text": "Beep", "start": 0.0, "end": 1.0, "size_pct": 4.0},
+                ],
+            },
+        ]
+        project = _make_project(events=events, speakers=[])
+        ass = CwiRenderer(project).render_ass("dummy.mp4")
+        assert "CwiBox" in ass

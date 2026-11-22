@@ -76,6 +76,10 @@ POP_OUT_MS = 180
 # of the captions box. Threshold: a word at or above this type size (% of
 # screen height) renders WITHOUT the box.
 BREAKOUT_SIZE_PCT = 10.0
+# Sound effects break out at a lower size than speech. Launch film
+# evidence: the loud [GASP] has no box at ~6.7% of screen height while
+# small SFX ([Beep], the small white [GASP]) keep theirs at ~4%.
+SFX_BREAKOUT_SIZE_PCT = 6.0
 
 def _opacity_to_alpha(opacity: float) -> int:
     """Convert opacity (0.0-1.0) to an ASS alpha byte.
@@ -720,6 +724,7 @@ class CwiRenderer:
         sync_enabled: bool = True,
         screen_width: int = 1920,
         margin_v_extra: int = 0,
+        breakout_pct: float = BREAKOUT_SIZE_PCT,
     ) -> list[dict]:
         """Build the caption lines for a dialogue event.
 
@@ -737,7 +742,7 @@ class CwiRenderer:
         # Spec section 2.4.1 breakout exception: very loud bursts break
         # out of the captions box - render the text with no box at all.
         breakout = any(
-            span["size_px"] >= round(screen_height * BREAKOUT_SIZE_PCT / 100.0)
+            span["size_px"] >= round(screen_height * breakout_pct / 100.0)
             for span in spans
         )
         # Rise origin: far left of the caption baseline (see _pop_tags).
@@ -1113,6 +1118,7 @@ class CwiRenderer:
                 sync_enabled=True,
                 screen_width=screen_width,
                 margin_v_extra=margin_v_extra,
+                breakout_pct=SFX_BREAKOUT_SIZE_PCT,
             )
             for line in lines:
                 if line.get("style") == "CwiBox":
