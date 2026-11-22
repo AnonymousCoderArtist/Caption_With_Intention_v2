@@ -316,3 +316,47 @@ class TestCorrectionInRun:
         result = pipeline._match_speakers(words, segments)
         assert [w.speaker_id for w in result] == expected
         assert all(isinstance(w, W) for w in result)
+
+
+class TestAttachIntonation:
+    def _result_with_words(self, words):
+        from engine.asr.models import TranscriptionResult
+
+        return {
+            "transcription": TranscriptionResult(
+                text=" ".join(w.text for w in words),
+                words=words,
+                model="test",
+                duration=words[-1].end if words else 0.0,
+            ),
+            "diarization_segments": [],
+        }
+
+    def test_attach_intonation_adds_key(self, tmp_path):
+        import numpy as np
+        import soundfile as sf
+
+        from engine.asr.models import Word
+
+        sr = 16000
+        t = np.arange(int(sr * 0.3)) / sr
+        audio = (0.5 * np.sin(2 * np.pi * 200 * t)).astype(np.float32)
+        wav = tmp_path / "tone.wav"
+        sf.write(str(wav), audio, sr)
+
+        pipeline = SpeechPipeline()
+        result = self._result_with_words([Word("tone", 0.0, 0.3)])
+        out = pipeline.attach_intonation(result, wav)
+
+        assert "intonation" in out
+        assert out["intonation"]["word_count"] == 1
+        word = out["intonation"]["words"][0]
+        assert word["text"] == "tone"
+        assert word["pitch_hz"] == pytest.approx(200, abs=15)
+        assert "size_pct" in word["typography"]
+
+    def test_attach_intonation_empty_words(self, tmp_path):
+        pipeline = SpeechPipeline()
+        result = self._result_with_words([])
+        out = pipeline.attach_intonation(result, tmp_path / "none.wav")
+        assert out["intonation"] is None

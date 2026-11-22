@@ -250,6 +250,44 @@ class SpeechPipeline:
 
         return result
 
+    def attach_intonation(
+        self,
+        result: dict,
+        source_path: str | Path,
+    ) -> dict:
+        """Add per-word intonation + CI typography to a pipeline result (M9).
+
+        Analyzes the source audio at the final word timings (post-ASR,
+        post-alignment) and attaches an "intonation" key: per-word
+        loudness, pitch, harmonic balance and the typography values the
+        renderer uses for intonation-driven styling. Unreliable words
+        (too short, silent) are flagged in the payload.
+
+        Args:
+            result: Output of run() or run_with_alignment().
+            source_path: The same audio/video source the result came from.
+
+        Returns:
+            The same result dict with an "intonation" key added.
+        """
+        from engine.audio_analysis.intonation import IntonationAnalyzer
+
+        words = result["transcription"].words
+        if not words:
+            result["intonation"] = None
+            return result
+
+        logger.info("Running intonation analysis (M9)...")
+        analyzer = IntonationAnalyzer()
+        intonation = analyzer.analyze_file(str(source_path), words)
+        result["intonation"] = intonation.to_dict()
+        logger.info(
+            "Intonation complete: %d words (%d unreliable)",
+            intonation.word_count,
+            intonation.unreliable_count,
+        )
+        return result
+
     # ─── Editor Integration (M6) ───────────────────────────────────
 
     def build_editor_payload(self, result: dict) -> dict:
