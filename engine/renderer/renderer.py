@@ -364,6 +364,16 @@ class CwiRenderer:
         speaker_map: dict[str, Speaker] = {
             spk.id: spk for spk in self.project.speakers
         }
+        # Pre-assign every speaker a distinct palette color for this
+        # render; the shared map keeps assignments unique and stable
+        # regardless of event order.
+        color_assignments: dict[str, str] = {
+            spk.id: spk.color
+            for spk in self.project.speakers
+            if "color" in spk.model_fields_set or spk.color != "#E5E517"
+        }
+        for spk in self.project.speakers:
+            assign_speaker_color(spk, color_assignments)
 
         events: list[dict] = []
         for event in self.project.events:
@@ -382,7 +392,9 @@ class CwiRenderer:
                 if sfx_speaker and self._get_exception_toggles(event).get(
                     "attribution_colors_on_off", True
                 ):
-                    sfx_color = hex_to_ass_color(assign_speaker_color(sfx_speaker))
+                    sfx_color = hex_to_ass_color(
+                        assign_speaker_color(sfx_speaker, color_assignments)
+                    )
                 events.extend(
                     self._build_sfx_line(
                         event,
@@ -423,7 +435,9 @@ class CwiRenderer:
 
                 speaker_color = hex_to_ass_color("#FFFFFF")
                 if speaker and toggles.get("attribution_colors_on_off", True):
-                    speaker_color = hex_to_ass_color(assign_speaker_color(speaker))
+                    speaker_color = hex_to_ass_color(
+                        assign_speaker_color(speaker, color_assignments)
+                    )
 
                 off_camera = bool(
                     (speaker and speaker.off_camera) or event.off_camera

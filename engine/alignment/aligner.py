@@ -347,6 +347,14 @@ class Aligner:
             else:
                 boundary_counts["speech"] += 1
 
+            if refined_end <= refined_start:
+                # Snapping a short word's start forward and its end back
+                # can collapse or invert the window (e.g. a one-letter
+                # word sitting in a noisy silence estimate). Fall back
+                # to the ASR timing, enforcing a minimal window.
+                refined_start = start_sec
+                refined_end = max(end_sec, start_sec + 0.04)
+
             # Detect overlap with next word
             boundary_type = "speech"
             if i < len(asr_words) - 1:

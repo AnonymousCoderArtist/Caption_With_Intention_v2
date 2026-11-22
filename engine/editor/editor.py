@@ -296,9 +296,13 @@ class Editor:
         words: Optional[list[dict]] = None,
     ) -> CaptionEvent:
         """Add a new caption event."""
+        try:
+            etype = EventType(event_type)
+        except ValueError:
+            etype = EventType.dialogue
         event = CaptionEvent(
             id=f"evt_{len(self.project.events) + 1:03d}",
-            type=EventType.dialogue,
+            type=etype,
             start=start,
             end=end,
             speaker_id=speaker_id,
@@ -784,6 +788,7 @@ class Editor:
                 start=start,
                 end=end,
                 speaker_id=entry.get("speaker_id"),
+                event_type=entry.get("type", "dialogue"),
                 words=words if words else None,
             )
             # M6 provenance metadata (spec §2.2)

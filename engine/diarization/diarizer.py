@@ -66,6 +66,8 @@ import tempfile
 from pathlib import Path
 from typing import Any, Optional
 
+import numpy as np
+
 from engine.core.ffmpeg import run_ffmpeg
 from engine.diarization.models import SpeakerSegment
 
@@ -295,7 +297,6 @@ class Diarizer:
         os.environ.setdefault("OMP_NUM_THREADS", "2")
         os.environ.setdefault("MKL_NUM_THREADS", "2")
 
-        import numpy as np
         import soundfile as sf
 
         # Extract audio to mono 16 kHz wav if needed
@@ -401,7 +402,7 @@ class Diarizer:
             audio_data: Full mono float32 audio at sample rate *sr*.
             sr: Sample rate in Hz.
             speech_timestamps: List of dicts with ``'start'`` and
-                ``'end'`` keys (milliseconds) from Silero VAD.
+                ``'end'`` keys (samples at *sr*) from Silero VAD.
             num_speakers: Maximum number of speaker templates.
 
         Returns:
@@ -411,8 +412,8 @@ class Diarizer:
         segments: list[tuple[float, float]] = []
 
         for ts in speech_timestamps:
-            start = ts["start"] / 1000.0  # ms → s
-            end = ts["end"] / 1000.0
+            start = ts["start"] / float(sr)  # samples → s
+            end = ts["end"] / float(sr)
             chunk = audio_data[
                 int(start * sr) : int(end * sr)
             ]

@@ -144,23 +144,39 @@ def assign_speaker_color(
     if speaker.color and (
         "color" in fields_set or speaker.color != DEFAULT_SPEAKER_COLOR
     ):
+        assigned[speaker.id] = speaker.color
         return speaker.color
 
     if speaker.category == SpeakerCategory.main:
         # Map main speakers to main palette by index. crc32 keeps the
         # assignment deterministic across processes (unlike hash()).
+        # Walk forward from the hashed start index until a color not
+        # already taken by another speaker is found, so two main
+        # speakers never share a color (crc32 mod N collides often).
         main_keys = list(MAIN_COLORS.keys())
-        idx = zlib.crc32(speaker.id.encode("utf-8")) % len(main_keys)
-        color = MAIN_COLORS[main_keys[idx]]
+        start = zlib.crc32(speaker.id.encode("utf-8")) % len(main_keys)
+        taken = {c for sid, c in assigned.items() if sid != speaker.id}
+        for step in range(len(main_keys)):
+            candidate = MAIN_COLORS[main_keys[(start + step) % len(main_keys)]]
+            if candidate not in taken:
+                color = candidate
+                break
+        else:
+            color = MAIN_COLORS[main_keys[start]]
     elif speaker.category == SpeakerCategory.supporting:
         # Pick supporting color that doesn't conflict with main colors
         main_colors = list(MAIN_COLORS.values())
+        taken = {c for sid, c in assigned.items() if sid != speaker.id}
         for c in SUPPORTING_COLORS:
+            if c in taken:
+                continue
             if all(validate_palette_collision(c, mc, min_distance=30.0) for mc in main_colors):
                 color = c
                 break
         else:
-            color = SUPPORTING_COLORS[hash(speaker.id) % len(SUPPORTING_COLORS)]
+            remaining = [c for c in SUPPORTING_COLORS if c not in taken]
+            pool = remaining or SUPPORTING_COLORS
+            color = pool[hash(speaker.id) % len(pool)]
     else:
         # Minor: deterministic pastel based on speaker ID
         hue = (hash(speaker.id) % 1000) / 1000.0
