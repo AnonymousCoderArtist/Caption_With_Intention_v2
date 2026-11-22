@@ -8,7 +8,7 @@ CWI transforms closed captions into an expressive, accessible experience (color 
 - **Milestones**: M0 ✅, M1 ✅, M2 ✅, M3 ✅, M4 ✅ (polished), M5 ✅ (editor engine + visual UI), M6 ✅ (ASR + word alignment)
 - **Tests**: 388 Python + 19 frontend (all green via `uv run pytest`)
 - **Tooling**: uv manages the venv, lockfile (`uv.lock`), and all Python commands (`uv sync`, `uv run`)
-- **Next**: M7 — Speaker diarization (spec §M7; default backend is now Nemotron 3 Diarization via audio.cpp — 2026-09-24; cross-chunk identity reconciliation + spec exit criteria still to close)
+- **Next**: M7 — Speaker diarization (spec §M7; default backend is now Nemotron 3 Diarization via audio.cpp — 2026-09-24; cross-chunk identity reconciliation ✅ in reconcile.py — remaining: embedding-based matching for chunks without usable overlap, and wiring reconciliation into the M13 long-video runner)
 
 ## Directory Tree
 ```
@@ -233,6 +233,13 @@ templates/           ← .gitkeep
 - Forced mode: wav2vec2 CTC posterior span — first/last non-blank feature frames after duplicate collapse give the word's true acoustic extent (`ctc_word_boundaries()`, pure numpy, unit-tested without torch); requires `uv sync --extra gpu`; falls back to VAD refinement if unavailable
 - `AlignedWord` (Word + phonemes, alignment_confidence, boundary_type), `AlignmentResult` (confidence stats, boundary_counts)
 
+### engine/diarization/reconcile.py (M7 — cross-chunk identity reconciliation)
+- `reconcile_speakers(chunk_segments, min_match_overlap=0.15, merge_gap=0.05)` — per-chunk local labels (source-timeline times) → stable global `spk_N` ids; adjacent chunks linked by mutual speech overlap in the shared region (greedy one-to-one, union-find for transitivity); unmatched locals become NEW global speakers (conservative — never wrongly merges)
+- `ReconciliationResult`: segments (relabeled, deduped, sorted), speaker_map {(chunk, local)->global}, global_speakers, matches log, unmatched list
+- `merge_duplicate_turns()` — collapses the same speech diarized twice in the chunk overlap (same-speaker only; real simultaneous speech preserved)
+- `merge_speakers()` / `split_speaker()` — editor override path (spec M7 exit criteria)
+- Embedding-based matching for chunks without usable overlap: TODO
+
 ### engine/diarization/diarizer.py + nemotron.py (M7 — default backend: Nemotron 3 Diarization)
 - `Diarizer(backend="nemotron")` — DEFAULT. NVIDIA Nemotron 3 Diarization (~100M-param open-weights transformer, OpenMDW-1.1, released 2026-09-23) run through the audio.cpp CLI (`audiocpp_cli --task diar --family nemotron_3_diar`, CPU backend). Up to 8 speakers, overlap-aware, real per-turn confidence (0–1)
 - `engine.diarization.nemotron` — resolution + IO: `resolve_cli()` (kwarg → `CWI_AUDIOCPP_CLI` env → PATH → dev build under `tools/nemotron-bench`), `ensure_model()` (one-time ~102 MB Q8_0 GGUF download from Hugging Face into `~/.cache/caption_with_intention/models/`, then offline), `parse_turns_file()` (audio.cpp `--turns-out` JSON → `SpeakerSegment`; start_sample/end_sample ÷ 16000 → seconds), `run_diarization()` (subprocess + timeout `max(180, 120 + 0.75×duration)`)
@@ -281,6 +288,7 @@ engine.exporters.vtt        ← engine.exporters.base
 engine.exporters.ass        ← engine.exporters.base
 engine.exporters.ttml       ← engine.exporters.base
 engine.diarization.diarizer ← engine.core.ffmpeg, engine.diarization.models, engine.diarization.nemotron
+engine.diarization.reconcile ← engine.diarization.models (stdlib only)
 engine.diarization.nemotron ← stdlib only (subprocess + urllib)
 engine.diarization.models   ← dataclasses (slots)
 engine.active_speaker.active_speaker ← engine.diarization.diarizer, engine.diarization.models
