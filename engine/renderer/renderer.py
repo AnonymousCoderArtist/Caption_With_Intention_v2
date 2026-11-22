@@ -1024,6 +1024,7 @@ class CwiRenderer:
                             * max(2, len(letters))
                         ):
                             per_ms = hold_s * 1000.0 / len(letters)
+                            pitches = word.letter_pitches or []
                             for li, ch in enumerate(letters):
                                 t_on = int(li * per_ms)
                                 sweep = (
@@ -1031,7 +1032,28 @@ class CwiRenderer:
                                     f"{t_on + LETTER_SWEEP_FADE_MS},"
                                     f"\\c{speaker_color}&\\alpha&H00&)"
                                 )
-                                _emit(ch, white + geometry + pop + sweep)
+                                # Scaled-up text follows the wave too
+                                # (user rule 2026-11-22): each letter
+                                # rides the voice pitch at its spot in
+                                # the word while the whole word grows.
+                                lp = (
+                                    pitches[li] if li < len(pitches) else None
+                                )
+                                letter_pop = (
+                                    self._pop_tags(
+                                        span,
+                                        event.style.pop_scale,
+                                        duration_ms,
+                                        org_y,
+                                        org_distance,
+                                        pitch_hz=lp,
+                                    )
+                                    if lp
+                                    else pop
+                                )
+                                _emit(
+                                    ch, white + geometry + letter_pop + sweep
+                                )
                         else:
                             _emit(
                                 span["text"],

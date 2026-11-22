@@ -48,6 +48,11 @@ class Word(BaseModel):
     # "pitch_hz" for the mid-word pitch contour (syllables ride the
     # voice pitch, launch film; filled by the analysis pipeline).
     syllables: Optional[list[dict]] = None
+    # Optional per-letter pitch in Hz, aligned to this word's letters,
+    # for sustained loud words (screams) whose pitch glides inside a
+    # single syllable (user rule 2026-11-22: scaled-up text follows
+    # the wave too). Filled by the analysis pipeline.
+    letter_pitches: Optional[list[Optional[float]]] = None
 
 
 class Style(BaseModel):

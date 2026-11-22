@@ -1785,3 +1785,62 @@ class TestLetterSweepSync:
         """Words under the loudness gate keep word-level sync."""
         ass = self._scream_ass(size_pct=5.0)
         assert ",\\c&H17E5E5&\\alpha&H00&)" not in ass
+
+
+class TestScaledTextFollowsWave:
+    """User rule 2026-11-22: 'the scales up text should also follow the
+    waves' - letters of a held loud word ride the voice pitch while the
+    word escalates (per-letter pitch from the analysis pipeline)."""
+
+    def _ass(self, letter_pitches=None):
+        from engine.renderer.renderer import CwiRenderer
+        word = {"text": "WHOOOOOA", "start": 0.0, "end": 2.0, "size_pct": 9.0}
+        if letter_pitches is not None:
+            word["letter_pitches"] = letter_pitches
+        events = [
+            {
+                "id": "evt_wave",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 3.0,
+                "speaker_id": "spk_1",
+                "text": "WHOOOOOA after",
+                "words": [word, {"text": "after", "start": 2.0, "end": 3.0}],
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "S", "category": "main", "color": "#E5E517"}]
+        project = _make_project(events=events, speakers=speakers)
+        return CwiRenderer(project).render_ass("dummy.mp4")
+
+    def test_high_pitch_letter_rides_higher(self):
+        """A 250Hz letter's rise exceeds the plain pop rise (9% of 1080
+        = 97px; pop 25% = 24.25px; 250Hz adds another 24.25px)."""
+        import math
+        ass = self._ass([250.0] + [None] * 7)
+        # org distance: 100000 + 960 (half of 1920)
+        theta = math.degrees(48.5 / 100960.0)
+        assert f"\\frz{theta:.5f}" in ass
+
+    def test_low_pitch_letter_cancels_the_rise(self):
+        """A 110Hz letter offsets exactly the 25% pop: no rise tag."""
+        ass = self._ass([110.0] + [None] * 7)
+        # first letter gets no \frz transform; the second (no pitch)
+        # still pops with the plain 24.25px rise.
+        import math
+        theta_pop = math.degrees(24.25 / 100960.0)
+        assert f"\\frz{theta_pop:.5f}" in ass
+        # but no letter rides at double that (pop + 250Hz pitch)
+        theta_hi = math.degrees(48.5 / 100960.0)
+        assert f"\\frz{theta_hi:.5f}" not in ass
+
+    def test_letter_sweep_still_applies_with_pitches(self):
+        """The color sweep and the wave compose: both transforms exist."""
+        ass = self._ass([200.0, 220.0, 180.0, 160.0, 200.0, 220.0, 240.0, 190.0])
+        assert ass.count(",\\c&H17E5E5&\\alpha&H00&)") == 8
+
+    def test_no_pitches_keeps_plain_pop(self):
+        """Without letter pitch data the sweep is unchanged."""
+        import math
+        ass = self._ass(None)
+        theta_pop = math.degrees(24.25 / 100960.0)
+        assert f"\\frz{theta_pop:.5f}" in ass
