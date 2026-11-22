@@ -191,16 +191,16 @@ class TestCwiRendererAssGeneration:
         project = _make_project()
         renderer = CwiRenderer(project)
         ass_content = renderer.render_ass("dummy.mp4")
-        assert "Default:" in ass_content
+        assert "Style: Default," in ass_content
         # CWI style should use Roboto Flex, 90% white primary, 90% black back
         for line in ass_content.split("\n"):
             if line.startswith("Style: Default,"):
                 assert "Roboto Flex" in line or "Arial" in line  # Font
                 parts = line.split(",")
-                # PrimaryColour = 3rd value (0-indexed) = white at 90%
-                assert "E6E6E6" in parts[3] or "FFFFFF" in parts[3]
-                # BackColour = 6th value = 90% black
-                assert "DE000000" in parts[5]
+                # PrimaryColour = 3rd value (0-indexed) = solid white
+                assert "FFFFFF" in parts[3]
+                # BackColour = 7th field (index 6) = 90% black (inverted alpha)
+                assert "1A000000" in parts[6]
 
     def test_ass_has_bottom_margin(self):
         project = _make_project()
@@ -353,10 +353,10 @@ class TestCwiRendererBuildCommand:
 
 class TestStyleConstants:
     def test_white_90_pct(self):
-        assert WHITE_90_PCT == "&HE6E6E6E6"
+        assert WHITE_90_PCT == "&H1AFFFFFF"
 
     def test_black_90_pct(self):
-        assert BLACK_90_PCT == "&HDE000000"
+        assert BLACK_90_PCT == "&H1A000000"
 
     def test_ass_dialogue_prefix(self):
         assert ASS_DIALOGUE_PREFIX == "Dialogue: 0,"

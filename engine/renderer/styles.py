@@ -8,13 +8,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from engine.rules.colors import (
-    MAIN_COLORS,
-    SUPPORTING_COLORS,
-    assign_speaker_color,
-)
-from schemas.project import Speaker, SpeakerCategory
-
+from schemas.project import Speaker
 
 # ─── Render-time constants ─────────────────────────────────────────
 
@@ -26,12 +20,13 @@ DEFAULT_BASELINE_SIZE_PCT = 5.0       # baseline type size
 DEFAULT_MIN_SIZE_PCT = 3.0
 DEFAULT_MAX_SIZE_PCT = 12.0
 
-# ASS color format: &HAABBGGRR (A=alpha, B=blue, G=green, R=red)
-# White at 90% opacity: alpha=0xE6 (90%), RGB=white
-WHITE_90_PCT = "&HE6E6E6E6"  # 90% opaque white in ASS BGR format (8-digit)
-WHITE_SOLID = "&HFFFFFFFF"  # Solid white (secondary colour, 8-digit)
-BLACK_90_PCT = "&HDE000000"  # 90% opaque black in ASS BGR format (8-digit)
-BLACK_SOLID = "&H00000000"  # Solid black (8-digit)
+# ASS color format: &HAABBGGRR (A=alpha, B=blue, G=green, R=red).
+# ASS alpha is INVERTED: 0x00 = fully opaque, 0xFF = fully transparent.
+# 90% opacity -> alpha = round(0.10 * 255) = 0x1A.
+WHITE_90_PCT = "&H1AFFFFFF"  # 90% opaque white (read-ahead text)
+WHITE_SOLID = "&H00FFFFFF"  # Solid white
+BLACK_90_PCT = "&H1A000000"  # 90% opaque black (caption box)
+BLACK_SOLID = "&H00000000"  # Solid black
 
 
 def hex_to_ass_color(hex_color: str) -> str:
@@ -86,9 +81,9 @@ def compute_word_style(
         Dict with size_pct, weight, width, italic, pop_size_pct values.
     """
     from engine.typography.mapping import (
-        volume_to_size,
-        pitch_to_weight,
         harmonics_to_width,
+        pitch_to_weight,
+        volume_to_size,
     )
 
     size_pct = volume_to_size(

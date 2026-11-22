@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import colorsys
-from typing import Optional
+import zlib
 
 from schemas.project import Speaker, SpeakerCategory
-
 
 # V1.0 Design System Colors
 MAIN_COLORS: dict[str, str] = {
@@ -94,7 +93,7 @@ def generate_minor_color(hue: float, saturation: float = 0.30, brightness: float
         Hex color string.
     """
     r, g, b = colorsys.hsv_to_rgb(hue % 1.0, saturation, brightness)
-    return "#{:02X}{:02X}{:02X}".format(int(r * 255), int(g * 255), int(b * 255))
+    return f"#{int(r * 255):02X}{int(g * 255):02X}{int(b * 255):02X}"
 
 
 def generate_minor_palette(count: int = 24) -> list[str]:
@@ -139,14 +138,19 @@ def assign_speaker_color(
         if sid == speaker.id:
             return color
 
-    # Use speaker's explicit color if set
-    if speaker.color and speaker.color != DEFAULT_SPEAKER_COLOR:
+    # Use the speaker's color when it was explicitly set, or when it
+    # differs from the schema default (treated as explicitly chosen).
+    fields_set = getattr(speaker, "model_fields_set", set()) or set()
+    if speaker.color and (
+        "color" in fields_set or speaker.color != DEFAULT_SPEAKER_COLOR
+    ):
         return speaker.color
 
     if speaker.category == SpeakerCategory.main:
-        # Map main speakers to main palette by index
+        # Map main speakers to main palette by index. crc32 keeps the
+        # assignment deterministic across processes (unlike hash()).
         main_keys = list(MAIN_COLORS.keys())
-        idx = hash(speaker.id) % len(main_keys)
+        idx = zlib.crc32(speaker.id.encode("utf-8")) % len(main_keys)
         color = MAIN_COLORS[main_keys[idx]]
     elif speaker.category == SpeakerCategory.supporting:
         # Pick supporting color that doesn't conflict with main colors

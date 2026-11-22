@@ -18,6 +18,8 @@ Tests cover all M4 visual rules per spec §4.2 and §4.3:
 
 from __future__ import annotations
 
+import re
+
 from pathlib import Path
 
 import pytest
@@ -82,10 +84,12 @@ class TestReadAheadLayer:
         project = _make_project(events=events, speakers=speakers)
         renderer = CwiRenderer(project)
         ass = renderer.render_ass("dummy.mp4")
-        # Read-ahead line: full sentence in white 90%
-        assert "Hello world." in ass
-        # Should have the white 90% color tag
-        assert WHITE_90_PCT.replace("&H", "") in ass or "E6E6E6" in ass
+        # Read-ahead line: full sentence in white 90% (tags stripped)
+        cleaned = re.sub(r"\{[^}]*\}", "", ass)
+        assert "Hello world." in cleaned
+        # Should use white text at 90% opacity (ASS alpha is inverted)
+        assert "\\c&HFFFFFF&" in ass
+        assert "\\alpha&H19&" in ass
 
     def test_read_ahead_white_color(self):
         events = [
@@ -141,12 +145,13 @@ class TestReadAheadLayer:
         project = _make_project(events=events, speakers=speakers)
         renderer = CwiRenderer(project)
         ass = renderer.render_ass("dummy.mp4")
-        # Full sentence should appear in read-ahead line
-        assert "I love captioning accessibility." in ass
+        # Full sentence should appear in read-ahead line (tags stripped)
+        cleaned = re.sub(r"\{[^}]*\}", "", ass)
+        assert "I love captioning accessibility." in cleaned
 
     def test_read_ahead_opacity_90_pct(self):
-        """Read-ahead uses 90% white (WHITE_90_PCT = &HE6E6E6E6)."""
-        assert WHITE_90_PCT == "&HE6E6E6E6"
+        """Read-ahead uses 90% white (WHITE_90_PCT = &H1AFFFFFF)."""
+        assert WHITE_90_PCT == "&H1AFFFFFF"
         # Verify this is used in read-ahead context
         events = [
             {
@@ -163,8 +168,9 @@ class TestReadAheadLayer:
         project = _make_project(events=events, speakers=speakers)
         renderer = CwiRenderer(project)
         ass = renderer.render_ass("dummy.mp4")
-        # The WHITE_90_PCT color should appear in the ASS (converted to hex)
-        assert "E6E6E6" in ass
+        # White text at 90% opacity should appear in the ASS
+        assert "\\c&HFFFFFF&" in ass
+        assert "\\alpha&H19&" in ass
 
 
 # ─── Word-Onset Color Sync Tests ──────────────────────
@@ -196,24 +202,23 @@ class TestWordOnsetColorSync:
 
         # Parse ASS dialogue lines and verify word onsets
         dialogue_lines = [l for l in ass.split("\n") if l.startswith("Dialogue:")]
-        # Should have read-ahead + word overlay lines
-        assert len(dialogue_lines) >= 4  # 1 read-ahead + 3 word overlays
+        # Should have read-ahead + sync overlay lines (full-sentence overlays)
+        assert len(dialogue_lines) >= 4  # 1 read-ahead + 3 sync overlays
 
-        # Find the "Hello" overlay - should start at 1.0 (word onset)
-        hello_line = None
-        world_line = None
-        for line in dialogue_lines:
-            if "Hello" in line and "world" not in line and "test" not in line:
-                hello_line = line
-            if "world" in line and "Hello" not in line and "test" not in line:
-                world_line = line
-
-        assert hello_line is not None
-        assert world_line is not None
-        # Hello should start at 1.0 (onset), not later
-        assert "0:00:01.00" in hello_line
-        # World should start at 1.8 (its onset)
-        assert "0:00:01.18" in world_line or "0:00:01.80" in world_line
+        # Overlay lines carry the full sentence; find them by start time.
+        hello_line = next(
+            l for l in dialogue_lines
+            if l.startswith("Dialogue: 0,0:00:01.00,") and "\\fnRoboto Flex" in l
+        )
+        world_line = next(
+            l for l in dialogue_lines
+            if l.startswith("Dialogue: 0,0:00:01.80,") and "\\fnRoboto Flex" in l
+        )
+        # Speaker color (yellow #E5E517 -> BGR &H17E5E5) appears at onsets.
+        assert "\\c&H17E5E5&" in hello_line
+        assert "\\c&H17E5E5&" in world_line
+        assert "Hello" in hello_line
+        assert "world" in world_line
 
     def test_word_color_speaker_assigned(self):
         """Words should have speaker color, not white."""
@@ -605,8 +610,9 @@ class TestMaxTwoLines:
         project = _make_project(events=events, speakers=speakers)
         renderer = CwiRenderer(project)
         ass = renderer.render_ass("dummy.mp4")
-        # All text should be present
-        assert long_text in ass
+        # All text should be present (inline tags stripped)
+        cleaned = re.sub(r"\{[^}]*\}", "", ass)
+        assert long_text in cleaned
 
 
 # ─── Dynamic Box Sizing ───────────────────────────────
@@ -658,8 +664,8 @@ class TestDynamicBoxSizing:
         renderer = CwiRenderer(project)
         ass = renderer.render_ass("dummy.mp4")
 
-        # BackColour (90% black) = DE000000
-        assert "DE000000" in ass
+        # BackColour (90% black; ASS alpha is inverted) = &H1A000000
+        assert "1A000000" in ass
 
 
 # ─── Type Size Range Tests ────────────────────────────
@@ -737,8 +743,8 @@ class TestExceptionProfiles:
         renderer = CwiRenderer(project)
         ass = renderer.render_ass("dummy.mp4")
 
-        # Read-ahead should always be white 90%
-        assert "E6E6E6" in ass
+        # Read-ahead should always be white
+        assert "\\c&HFFFFFF&" in ass
 
     def test_word_override_still_renders(self):
         """Per-word overrides are rendered correctly."""
@@ -910,12 +916,8 @@ class TestStyleDrivenRendering:
         renderer = CwiRenderer(project)
         ass = renderer.render_ass("dummy.mp4")
 
-        # 0.75 opacity → alpha = 0xBF (127/255 ≈ 0.498 → int(0.75*255)=191=0xBF)
-        assert "BF" in ass.upper()
-        # Full opaque white should NOT be the read-ahead color
-        for line in ass.split("\n"):
-            if line.startswith("Dialogue:") and "Test" in line:
-                assert "&HFFFFFF" not in line
+        # 0.75 opacity → ASS alpha = round(0.25*255) = 64 = 0x40 (inverted)
+        assert "\\alpha&H40&" in ass
 
     def test_default_pop_scale_is_15_pct(self):
         """Default pop_scale 1.15 produces 15% pop."""
@@ -953,8 +955,8 @@ class TestStyleDrivenRendering:
         project = _make_project(events=events, speakers=speakers)
         renderer = CwiRenderer(project)
         ass = renderer.render_ass("dummy.mp4")
-        # 90% white = alpha E6 = &HE6E6E6E6
-        assert "E6E6E6" in ass
+        # 90% opacity → ASS alpha = 25 = 0x19 (inverted)
+        assert "\\alpha&H19&" in ass
 
 
 # ─── New: Helper Function Tests ────────────────────────────
@@ -966,28 +968,26 @@ class TestHelperFunctions:
         """100% opacity → alpha FF."""
         from engine.renderer.renderer import _compute_opacity_color
         result = _compute_opacity_color(1.0, "#FFFFFF")
-        assert result.startswith("&HFFFFFF")
-        assert result.endswith("FF")  # alpha = 255 = FF
+        assert result == "&H00FFFFFF"  # alpha = 0 = opaque (inverted)
 
     def test_compute_opacity_color_half_opacity(self):
-        """50% opacity → alpha 7F (127/255 ≈ 0.498)."""
+        """50% opacity → ASS alpha 80 (inverted: 128 = half transparent)."""
         from engine.renderer.renderer import _compute_opacity_color
         result = _compute_opacity_color(0.5, "#FFFFFF")
-        assert result.endswith("7F")
+        assert result == "&H80FFFFFF"
 
     def test_compute_opacity_color_zero_opacity(self):
-        """0% opacity → alpha 00."""
+        """0% opacity → ASS alpha FF (fully transparent)."""
         from engine.renderer.renderer import _compute_opacity_color
         result = _compute_opacity_color(0.0, "#FFFFFF")
-        assert result.endswith("00")
+        assert result == "&HFFFFFFFF"
 
     def test_compute_opacity_color_custom_base(self):
         """Custom base color works."""
         from engine.renderer.renderer import _compute_opacity_color
         result = _compute_opacity_color(0.90, "#E5E517")
-        # Alpha = int(0.90 * 255) = 229 = 0xE5, color = #E5E517 → BGR = 17E5E5
-        assert result.startswith("&H17E5E5")
-        assert result.endswith("E5")
+        # 90% opacity → ASS alpha = 25 = 0x19; #E5E517 → BGR = 17E5E5
+        assert result == "&H1917E5E5"
 
     def test_format_pop_scale_standard(self):
         """Standard 1.15 pop scale."""
@@ -1127,7 +1127,7 @@ class TestExceptionProfileRendering:
         ass = renderer.render_ass("dummy.mp4")
 
         # Read-ahead is always white
-        assert "E6E6E6" in ass
+        assert "\\c&HFFFFFF&" in ass
 
     def test_color_layer_off_no_word_color(self):
         """When synchronization color layer is off, word overlays are white."""
@@ -1150,7 +1150,7 @@ class TestExceptionProfileRendering:
         ass = renderer.render_ass("dummy.mp4")
 
         # Read-ahead should still be white
-        assert "E6E6E6" in ass
+        assert "\\c&HFFFFFF&" in ass
 
     def test_default_profile_full_ci(self):
         """No exception profile → full CI rendering with speaker colors."""

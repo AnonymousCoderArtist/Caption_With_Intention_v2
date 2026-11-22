@@ -266,14 +266,16 @@ templates/           ← .gitkeep
 - `build_editor_payload(result)` → `{"transcript", "speakers"}` for `EditorApi.build_from_transcript()` — segment→word grouping is O(log W) per segment via bisect; precise word timing + provenance survive into the editor project (M6 exit criteria, verified by tests/integration/test_m6_pipeline_to_renderer.py)
 
 ### engine/renderer/renderer.py
-- `CwiRenderer`: Deterministic ASS generation + FFmpeg burn-in. All M4 visual rules: read-ahead, word-onset sync, pop animation, syllable mode, exception profiles, SFX/music rules, work area positioning, style-driven rendering
-- `_compute_opacity_color(opacity, base_hex)` → ASS color string
+- `CwiRenderer`: Deterministic ASS generation + FFmpeg burn-in implementing the CWI Design System V1.0 visually: read-ahead sentence in white 90% opacity; sync overlay lines (same full-sentence layout) reveal each word in the speaker attribution color at its onset and keep it colored; current word pops 15% and returns; syllable mode colors in syllable by syllable; 90% black caption box (BorderStyle=3 on the read-ahead line only, box-less `Overlay` style for sync lines); off-camera = same color + italic; Roboto Flex embedded into the ASS `[Fonts]` section when a font file is given
+- `_compute_opacity_color(opacity, base_hex)` → ASS `&HAABBGGRR` (ASS alpha is INVERTED: 0=opaque)
 - `_format_pop_scale(scale)` → ASS \fscx/\fscy tag string
-- `_build_syllable_overlays(event, speaker, speaker_color_ass, pop_tag, font_tag)` → list[dict]
+- `_compose_word_spans(event, screen_height)` → sentence + per-word geometry spans (preserves original spacing/punctuation)
+- `_build_sync_lines(event, speaker, speaker_color, screen_height, italic_tag)` → one overlay line per word/syllable onset
 - `_get_exception_toggles(event)` → dict[str, bool]
+- Known approximation: during the ~300ms pop the center-aligned line recenters slightly (per-word absolute positioning would need text measurement)
 
 ### engine/renderer/styles.py
-- `WHITE_90_PCT = "&HE6E6E6E6"`, `WHITE_SOLID = "&HFFFFFFFF"`, `BLACK_90_PCT = "&HDE000000"`, `BLACK_SOLID = "&H00000000"` — 8-digit ASS BGR format
+- `WHITE_90_PCT = "&H1AFFFFFF"`, `WHITE_SOLID = "&H00FFFFFF"`, `BLACK_90_PCT = "&H1A000000"`, `BLACK_SOLID = "&H00000000"` — 8-digit ASS &HAABBGGRR (alpha inverted: 0x1A = 90% opaque)
 
 ## Dependency Graph
 ```
@@ -338,6 +340,7 @@ This means: diarization → confidence check → face tracking only as fallback.
 9. Pydantic v2 for data models
 10. `ProjectEngine.__init__` calls `setup_logging()` at import (side effect — note for refactoring)
 11. Speaker diarization is PRIMARY (speech comes from humans); face/video tracking is FALLBACK only when confidence is low; character models can be any avatar
+12. Speaker color assignment is deterministic (crc32 of speaker id, not hash()) and always respects an explicitly set `Speaker.color` (pydantic model_fields_set)
 
 ## Key Patterns for Optimization
 - **Plugin/Registry**: `engine.core.registry` — `__init_subclass__` auto-registration
