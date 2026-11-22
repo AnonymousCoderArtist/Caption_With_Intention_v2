@@ -8,6 +8,7 @@ CWI transforms closed captions into an expressive, accessible experience (color 
 - **Milestones**: M0 ✅, M1 ✅, M2 ✅, M3 ✅, M4 ✅ (polished), M5 ✅ (editor engine + visual UI), M6 ✅ (ASR + word alignment)
 - **Tests**: 388 Python + 19 frontend (all green via `uv run pytest`)
 - **Tooling**: uv manages the venv, lockfile (`uv.lock`), and all Python commands (`uv sync`, `uv run`)
+- **M10 partial ✅ (2026-11-22)**: alignment/syllables.py — rule-based syllable splitting, per-word timing (proportional, snapped to acoustic energy dips when audio given), auto word-vs-syllable animation decision; output shape matches editor/renderer syllable dicts. Remaining: phoneme-level alignment (needs gpu extra), manual syllable editor UI hookup
 - **M9 partial ✅ (2026-11-22)**: intonation.py — per-word loudness/pitch/harmonics → CI typography with cross-word smoothing; estimate_pitch() rewritten (normalized autocorrelation, 80–500 Hz bounded lags, parabolic interpolation — the old first-zero-crossing version returned None for all pure tones). Remaining: wire into SpeechPipeline output + editor view
 - **Next**: M7 — Speaker diarization (spec §M7; default backend is now Nemotron 3 Diarization via audio.cpp — 2026-09-24; cross-chunk identity reconciliation ✅ in reconcile.py — remaining: embedding-based matching for chunks without usable overlap, and wiring reconciliation into the M13 long-video runner)
 
@@ -230,6 +231,12 @@ templates/           ← .gitkeep
 - `TranscriptCorrector(min_confidence=0.5, remove_repeats=True, remove_empty=True, max_repeat_gap=0.25)`: rule-based, no ML; `correct(words) → CorrectionReport` (cleaned words + audit log with original/proposed/reason/rule_id per spec §2.2)
 - Rules: `repeat-collapse` (ASR stutter — only when the duplicate is within `max_repeat_gap` seconds; "no ... no" with a long gap is kept as intentional), `empty-drop`, `low-confidence` (flag only, never rewords; confidence=0 = "no data", not flagged)
 
+### engine/alignment/syllables.py (M10 — syllable splitting + timing)
+- `split_syllables(text)` — rule-based English syllabification (V-CV/VC-CV splits, digraphs kept, silent-e, "-le", "-tion" glide merges; documented limits: some vowel-hiatus words like "video" merge)
+- `assign_syllable_timings(word, syllables, audio=None, sr=None)` — proportional split; with audio, boundaries snap to RMS energy dips (±30% window) and confidence rises (0.5 + dip-depth/2); text-only confidence 0.4
+- `should_use_syllable_animation()` — spec's automatic decision: ≥2 syllables + word ≥0.2s + confidence ≥0.6 (in practice: audio-refined only)
+- `syllabify_words(words, audio, sr)` — batch; `WordSyllables` dataclass, syllables as {"text","start","end"} dicts matching editor/renderer shape
+
 ### engine/alignment/aligner.py + models.py (M6 — word alignment)
 - `Aligner(audio_path, mode="vad_refinement"|"forced", min_silence_duration=0.15, hop_length=10ms, sample_rate=16000)`
 - Audio handling: WAV read via soundfile; mp4/mp3/... extracted to a temp 16 kHz mono WAV via ffmpeg (`cleanup()` removes it); non-16 kHz resampled with linear interpolation
@@ -309,6 +316,7 @@ engine.asr.backends         ← factory; backend modules LAZY
 engine.asr.corrector        ← engine.asr.models (stdlib only)
 engine.alignment.models     ← engine.asr.models (dataclasses)
 engine.alignment.aligner    ← numpy, soundfile; torch/transformers LAZY (forced mode only, gpu extra)
+engine.alignment.syllables  ← engine.asr.models, numpy
 engine.speech.pipeline      ← engine.asr.*, engine.diarization.*, engine.alignment.*
 ```
 
