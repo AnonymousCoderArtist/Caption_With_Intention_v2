@@ -202,8 +202,8 @@ class TestWordOnsetColorSync:
 
         # Parse ASS dialogue lines and verify word onsets
         dialogue_lines = [l for l in ass.split("\n") if l.startswith("Dialogue:")]
-        # Should have read-ahead + sync overlay lines (full-sentence overlays)
-        assert len(dialogue_lines) >= 4  # 1 read-ahead + 3 sync overlays
+        # One full-sentence line per word onset (no separate base layer)
+        assert len(dialogue_lines) >= 3  # 3 word onsets
 
         # Overlay lines carry the full sentence; find them by start time.
         hello_line = next(
@@ -907,7 +907,7 @@ class TestStyleDrivenRendering:
                 "end": 1.0,
                 "speaker_id": "spk_1",
                 "text": "Test.",
-                "words": [{"text": "Test", "start": 0.0, "end": 0.5}],
+                "words": [{"text": "Test", "start": 0.4, "end": 0.9}],
                 "style": {"read_ahead_opacity": 0.75},
             },
         ]
@@ -948,7 +948,7 @@ class TestStyleDrivenRendering:
                 "end": 1.0,
                 "speaker_id": "spk_1",
                 "text": "Test.",
-                "words": [{"text": "Test", "start": 0.0, "end": 0.5}],
+                "words": [{"text": "Test", "start": 0.4, "end": 0.9}],
             },
         ]
         speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E5E517"}]
@@ -1073,10 +1073,10 @@ class TestSyllableMode:
 
         # Full word should appear
         assert "Testing" in ass
-        # Should have exactly 2 dialogue lines (read-ahead + word overlay),
-        # not 4 (which would indicate syllable overlays)
+        # Exactly 1 dialogue line (single onset interval, no syllable split),
+        # not 2+ (which would indicate syllable-level lines)
         dialogue_lines = [l for l in ass.split("\n") if l.startswith("Dialogue:")]
-        assert len(dialogue_lines) == 2
+        assert len(dialogue_lines) == 1
 
     def test_syllable_mode_fallback_no_syllables(self):
         """Syllable mode with no syllable data falls back to word overlay."""
@@ -1116,7 +1116,7 @@ class TestExceptionProfileRendering:
                 "end": 1.0,
                 "speaker_id": "spk_1",
                 "text": "Test.",
-                "words": [{"text": "Test", "start": 0.0, "end": 0.5}],
+                "words": [{"text": "Test", "start": 0.4, "end": 0.9}],
                 "style": {},
                 "exception_profile": "caption_event",
             },
@@ -1139,7 +1139,7 @@ class TestExceptionProfileRendering:
                 "end": 1.0,
                 "speaker_id": "spk_1",
                 "text": "Test.",
-                "words": [{"text": "Test", "start": 0.0, "end": 0.5}],
+                "words": [{"text": "Test", "start": 0.4, "end": 0.9}],
                 "style": {},
                 "exception_profile": "caption_event",
             },

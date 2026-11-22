@@ -266,11 +266,12 @@ templates/           ← .gitkeep
 - `build_editor_payload(result)` → `{"transcript", "speakers"}` for `EditorApi.build_from_transcript()` — segment→word grouping is O(log W) per segment via bisect; precise word timing + provenance survive into the editor project (M6 exit criteria, verified by tests/integration/test_m6_pipeline_to_renderer.py)
 
 ### engine/renderer/renderer.py
-- `CwiRenderer`: Deterministic ASS generation + FFmpeg burn-in implementing the CWI Design System V1.0 visually: read-ahead sentence in white 90% opacity; sync overlay lines (same full-sentence layout) reveal each word in the speaker attribution color at its onset and keep it colored; current word pops 15% and returns; syllable mode colors in syllable by syllable; 90% black caption box (BorderStyle=3 on the read-ahead line only, box-less `Overlay` style for sync lines); off-camera = same color + italic; Roboto Flex embedded into the ASS `[Fonts]` section when a font file is given
+- `CwiRenderer`: Deterministic ASS generation + FFmpeg burn-in implementing the CWI Design System V1.0 visually as ONE dialogue line per word/syllable onset interval (single-layer model, no base+overlay doubling): each line carries the full sentence — spoken words in the speaker attribution color (stay colored), unspoken words in white 90% read-ahead, current word pops 15% via \fscx/\fscy transform around its own baseline (the rest of the line never moves) and returns; before the first onset the whole line is white 90%; syllable mode colors in syllable by syllable; 90% black caption box via BorderStyle=3 on the Default style; off-camera = same color + italic; Roboto Flex embedded into the ASS `[Fonts]` section when a font file is given
 - `_compute_opacity_color(opacity, base_hex)` → ASS `&HAABBGGRR` (ASS alpha is INVERTED: 0=opaque)
 - `_format_pop_scale(scale)` → ASS \fscx/\fscy tag string
 - `_compose_word_spans(event, screen_height)` → sentence + per-word geometry spans (preserves original spacing/punctuation)
-- `_build_sync_lines(event, speaker, speaker_color, screen_height, italic_tag)` → one overlay line per word/syllable onset
+- `_sync_points(event)` → sorted onset times (word or syllable level)
+- `_build_timed_lines(event, speaker, speaker_color, screen_height, italic_tag)` → one full-sentence line per onset interval
 - `_get_exception_toggles(event)` → dict[str, bool]
 - Known approximation: during the ~300ms pop the center-aligned line recenters slightly (per-word absolute positioning would need text measurement)
 

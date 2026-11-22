@@ -71,10 +71,6 @@ _MARK_CLOSE = ""
 POP_IN_MS = 120
 POP_OUT_MS = 180
 
-# Fully transparent inline text (unspoken words in a sync overlay line).
-_HIDDEN_TAG = "\\alpha&HFF&"
-
-
 def _opacity_to_alpha(opacity: float) -> int:
     """Convert opacity (0.0-1.0) to an ASS alpha byte.
 
@@ -319,21 +315,21 @@ class CwiRenderer:
                     else ""
                 )
 
-                # Read-ahead base line (full sentence, configurable opacity)
-                events.append(
-                    self._build_read_ahead_line(event, screen_height, italic_tag)
-                )
-
-                # Sync overlay lines (color revealed word by word / syllable
-                # by syllable, with pop on the current unit)
-                if event.words and toggles.get(
-                    "synchronization_color_layer_on_off", True
-                ):
-                    events.extend(
-                        self._build_sync_lines(
-                            event, speaker, speaker_color, screen_height, italic_tag
-                        )
+                # One caption line per onset interval: spoken words in the
+                # speaker color, current word/syllable popping, unspoken
+                # words in read-ahead white. A single line is visible at
+                # any moment, so colored words never double with white.
+                events.extend(
+                    self._build_timed_lines(
+                        event,
+                        speaker_color,
+                        screen_height,
+                        italic_tag,
+                        sync_enabled=toggles.get(
+                            "synchronization_color_layer_on_off", True
+                        ),
                     )
+                )
 
         return events
 
@@ -427,43 +423,6 @@ class CwiRenderer:
             f"\\t({t1},{t2},\\fscx{span['width']}\\fscy100)"
         )
 
-    def _build_read_ahead_line(
-        self,
-        event: CaptionEvent,
-        screen_height: int,
-        italic_tag: str,
-    ) -> dict:
-        """Build the read-ahead dialogue line (full sentence, white 90%)."""
-        sentence, spans = self._compose_word_spans(event, screen_height)
-        alpha = _opacity_to_alpha(event.style.read_ahead_opacity)
-
-        span_tags: list[str] = []
-        text = ""
-        for span in spans:
-            span_tags.append(
-                f"\\c&HFFFFFF&\\alpha&H{alpha:02X}&"
-                + self._geometry_tags(span)
-            )
-            text += f"{_MARK_OPEN}{len(span_tags) - 1}{_MARK_CLOSE}{span['text']}"
-        if not spans:
-            text = sentence
-
-        tags: dict[str, str] = {}
-        if not spans:
-            tags["color"] = f"\\c&HFFFFFF&\\alpha&H{alpha:02X}&"
-        if italic_tag:
-            tags["italic"] = italic_tag
-
-        return {
-            "start": event.start,
-            "end": event.end,
-            "text": text,
-            "type": "read_ahead",
-            "parent_event_id": event.id,
-            "tags": tags,
-            "span_tags": span_tags,
-        }
-
     def _sync_points(self, event: CaptionEvent) -> list[tuple[float, int, Optional[int]]]:
         """Sorted (time, word_index, syllable_index) onset points.
 
@@ -487,29 +446,58 @@ class CwiRenderer:
             deduped.append(point)
         return deduped
 
-    def _build_sync_lines(
+    def _build_timed_lines(
         self,
         event: CaptionEvent,
-        speaker: Optional[Speaker],
         speaker_color: str,
         screen_height: int,
         italic_tag: str,
+        sync_enabled: bool = True,
     ) -> list[dict]:
-        """Build sync overlay lines, one per word/syllable onset.
+        """Build the caption lines for a dialogue event.
 
-        Each overlay line carries the full sentence at the same geometry
-        as the read-ahead line. Spoken words are drawn in the speaker's
-        attribution color, the word/syllable at its onset additionally
-        pops, and unspoken words are transparent (the white read-ahead
-        line beneath them stays visible). Words stay colored once spoken.
+        Emits one line per word/syllable onset interval (plus an optional
+        pre-onset read-ahead interval). Every line carries the full
+        sentence at identical geometry: words already spoken are drawn in
+        the speaker's attribution color and stay colored, the word or
+        syllable at its onset additionally pops, and unspoken words stay
+        in the read-ahead white (spec sections 2.2.1-2.2.4). Exactly one
+        line is visible at any moment, so a colored word never doubles
+        with white text underneath it.
         """
-        _, spans = self._compose_word_spans(event, screen_height)
-        points = self._sync_points(event)
-        pop_scale = event.style.pop_scale
+        sentence, spans = self._compose_word_spans(event, screen_height)
+        alpha = _opacity_to_alpha(event.style.read_ahead_opacity)
+        white = f"\\c&HFFFFFF&\\alpha&H{alpha:02X}&"
+
+        if not spans:
+            tags: dict[str, str] = {"color": white}
+            if italic_tag:
+                tags["italic"] = italic_tag
+            return [
+                {
+                    "start": event.start,
+                    "end": event.end,
+                    "text": sentence,
+                    "type": "dialogue",
+                    "parent_event_id": event.id,
+                    "tags": tags,
+                }
+            ]
+
+        points = self._sync_points(event) if sync_enabled else []
+        intervals: list[tuple[float, float, Optional[int], Optional[int]]] = []
+        if not points:
+            intervals.append((event.start, event.end, None, None))
+        else:
+            if points[0][0] > event.start:
+                # Read-ahead interval before the first word onset.
+                intervals.append((event.start, points[0][0], None, None))
+            for k, (start, cur_word, cur_syl) in enumerate(points):
+                end = points[k + 1][0] if k + 1 < len(points) else event.end
+                intervals.append((start, end, cur_word, cur_syl))
 
         lines: list[dict] = []
-        for k, (start, cur_word, cur_syl) in enumerate(points):
-            end = points[k + 1][0] if k + 1 < len(points) else event.end
+        for start, end, cur_word, cur_syl in intervals:
             if end - start <= 0:
                 continue
             duration_ms = (end - start) * 1000.0
@@ -527,14 +515,14 @@ class CwiRenderer:
 
             for i, span in enumerate(spans):
                 geometry = self._geometry_tags(span)
-                if i < cur_word:
+                if cur_word is None or i > cur_word:
+                    # Unspoken (or pre-onset): read-ahead white.
+                    _emit(span["text"], white + geometry)
+                elif i < cur_word:
                     # Already spoken: solid speaker color, no pop.
                     _emit(span["text"], f"\\c{speaker_color}&{geometry}")
-                elif i > cur_word:
-                    # Not yet spoken: transparent; read-ahead shows through.
-                    _emit(span["text"], f"{_HIDDEN_TAG}{geometry}")
                 else:
-                    # Current word.
+                    # Current word at its onset.
                     word = span["word"]
                     syllables = (
                         word.syllables
@@ -544,14 +532,14 @@ class CwiRenderer:
                     if not syllables:
                         tag = (
                             f"\\c{speaker_color}&{geometry}"
-                            + self._pop_tags(span, pop_scale, duration_ms)
+                            + self._pop_tags(
+                                span, event.style.pop_scale, duration_ms
+                            )
                         )
                         _emit(span["text"], tag)
                     else:
-                        # Syllable variation: color in syllable by syllable.
-                        # Separator/punctuation around the word rides on
-                        # the outer syllables so spans rejoin to the
-                        # sentence exactly as the read-ahead line lays out.
+                        # Syllable variation: color in syllable by syllable,
+                        # unspoken syllables stay read-ahead white.
                         k = span["text"].find(word.text)
                         if k >= 0:
                             prefix = span["text"][:k]
@@ -573,12 +561,14 @@ class CwiRenderer:
                                 _emit(
                                     syl_text,
                                     f"\\c{speaker_color}&{geometry}"
-                                    + self._pop_tags(span, pop_scale, duration_ms),
+                                    + self._pop_tags(
+                                        span, event.style.pop_scale, duration_ms
+                                    ),
                                 )
                             else:
-                                _emit(syl_text, f"{_HIDDEN_TAG}{geometry}")
+                                _emit(syl_text, white + geometry)
 
-            tags: dict[str, str] = {"font": f"\\fn{CWI_FONT_FAMILY}"}
+            tags = {"font": f"\\fn{CWI_FONT_FAMILY}"}
             if italic_tag:
                 tags["italic"] = italic_tag
 
@@ -587,7 +577,7 @@ class CwiRenderer:
                     "start": start,
                     "end": end,
                     "text": "".join(parts),
-                    "type": "sync_overlay",
+                    "type": "dialogue",
                     "parent_event_id": event.id,
                     "word_index": cur_word,
                     "syllable_index": cur_syl,
@@ -700,11 +690,6 @@ class CwiRenderer:
                 # The text is everything after the 9th comma (index 9)
                 parts = line.split(",", 9)
                 if len(parts) == 10:
-                    # Sync overlays use the box-less Overlay style: the
-                    # read-ahead base line draws the single caption box,
-                    # and overlay boxes would cover the base text.
-                    if evt.get("type") == "sync_overlay":
-                        parts[3] = "Overlay"
                     text = parts[9]
 
                     span_tags = evt.get("span_tags")
@@ -784,31 +769,11 @@ class CwiRenderer:
 
         fonts_section = self._build_fonts_section() if embed_font else None
 
-        # Overlay style: identical geometry to Default but without the
-        # caption box (BorderStyle=1, no outline) so sync overlay lines
-        # draw only text over the read-ahead line's box.
-        overlay_style = (
-            f"Style: Overlay,{font_name},"
-            f"{base_fs},"
-            "&H00FFFFFF,"       # PrimaryColour
-            "&H00FFFFFF,"       # SecondaryColour
-            "&H00000000,"       # OutlineColour
-            "&H00000000,"       # BackColour (unused)
-            "0,0,0,0,"
-            "100,100,0,0,"
-            "1,0,0,2,"          # BorderStyle=1, Outline=0, Shadow=0,
-                                 # Alignment=2 (bottom center)
-            f"{work_area['margin_left']},{work_area['margin_right']},"
-            f"{screen_height - work_area['box_y']},"
-            "1"
-        )
-
         result: list[str] = []
         fonts_inserted = False
         for line in ass_content.split("\n"):
             if line.startswith("Style: Default"):
                 result.append(cwi_style)
-                result.append(overlay_style)
             elif line.startswith("PlayResX:"):
                 result.append(f"PlayResX: {screen_width}")
             elif line.startswith("PlayResY:"):
