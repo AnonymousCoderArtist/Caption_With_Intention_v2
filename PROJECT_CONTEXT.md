@@ -8,6 +8,7 @@ CWI transforms closed captions into an expressive, accessible experience (color 
 - **Milestones**: M0 ✅, M1 ✅, M2 ✅, M3 ✅, M4 ✅ (polished), M5 ✅ (editor engine + visual UI), M6 ✅ (ASR + word alignment)
 - **Tests**: 388 Python + 19 frontend (all green via `uv run pytest`)
 - **Tooling**: uv manages the venv, lockfile (`uv.lock`), and all Python commands (`uv sync`, `uv run`)
+- **M9 partial ✅ (2026-11-22)**: intonation.py — per-word loudness/pitch/harmonics → CI typography with cross-word smoothing; estimate_pitch() rewritten (normalized autocorrelation, 80–500 Hz bounded lags, parabolic interpolation — the old first-zero-crossing version returned None for all pure tones). Remaining: wire into SpeechPipeline output + editor view
 - **Next**: M7 — Speaker diarization (spec §M7; default backend is now Nemotron 3 Diarization via audio.cpp — 2026-09-24; cross-chunk identity reconciliation ✅ in reconcile.py — remaining: embedding-based matching for chunks without usable overlap, and wiring reconciliation into the M13 long-video runner)
 
 ## Directory Tree
@@ -193,8 +194,11 @@ templates/           ← .gitkeep
 ### engine/typography/mapping.py
 - volume_to_size(volume) → size_pct, pitch_to_weight(pitch) → weight, harmonics_to_width(harmonics) → width, compute_word_typography(...) → dict
 
-### engine/audio_analysis/basic.py
-- estimate_loudness(), estimate_pitch(), smooth_signal(), analyze_audio_chunk()
+### engine/audio_analysis/basic.py + intonation.py (M9)
+- estimate_loudness(), estimate_pitch() (rewritten 2026-11-22: normalized autocorrelation, bounded lags, parabolic interpolation, clarity gate), smooth_signal(), analyze_audio_chunk()
+- `estimate_harmonic_energies(chunk, sr, cutoff_hz=1000)` — FFT low/high spectral split (0-1)
+- `IntonationAnalyzer(harmonic_cutoff_hz, smooth_window, smooth_method)`: analyze(audio, sr, words) / analyze_file(path, words) → IntonationResult; per-word loudness/pitch/harmonics smoothed across words → compute_word_typography; words <40ms or silent marked reliable=False (excluded from smoothing)
+- `WordIntonation` / `IntonationResult` dataclasses with to_dict()
 
 ### schemas/schema.py
 - Pydantic v2 models: SpeakerCategory(Enum), EventType(Enum), ReviewState(Enum), Word, Style, CaptionEvent, Speaker, VideoInfo, Project
@@ -282,6 +286,7 @@ engine.rules.colors         ← schemas.project, stdlib
 engine.rules.profile_loader ← engine.logging, json
 engine.typography.mapping   ← engine.rules.profile_loader
 engine.audio_analysis.basic ← numpy only
+engine.audio_analysis.intonation ← engine.audio_analysis.basic, engine.typography.mapping, engine.asr.models, numpy, soundfile (ffmpeg for non-WAV)
 engine.exporters.base       ← engine.core.registry (Plugin ABC)
 engine.exporters.srt        ← engine.exporters.base
 engine.exporters.vtt        ← engine.exporters.base

@@ -6,8 +6,9 @@ analysis used by the intonation engine.
 
 from __future__ import annotations
 
-import numpy as np
 from typing import Optional
+
+import numpy as np
 
 
 def estimate_loudness(
@@ -53,12 +54,23 @@ def estimate_loudness(
 def estimate_pitch(
     audio_chunk: np.ndarray,
     sample_rate: int,
+    min_hz: float = 80.0,
+    max_hz: float = 500.0,
+    clarity: float = 0.3,
 ) -> Optional[float]:
     """Estimate fundamental frequency (F0) using autocorrelation.
+
+    Normalized autocorrelation, peak search bounded to the human voice
+    range (80-500 Hz by default), with parabolic interpolation for
+    sub-sample accuracy. Returns None for unvoiced/noisy spans whose
+    best peak is weaker than `clarity` (fraction of the lag-0 peak).
 
     Args:
         audio_chunk: 1D numpy array of audio samples.
         sample_rate: Audio sample rate in Hz.
+        min_hz: Lowest detectable F0 (longest lag).
+        max_hz: Highest detectable F0 (shortest lag).
+        clarity: Minimum normalized peak height to count as voiced.
 
     Returns:
         Estimated pitch in Hz, or None if no pitch detected.
@@ -66,32 +78,37 @@ def estimate_pitch(
     if len(audio_chunk) < sample_rate * 0.02:  # Need at least 20ms
         return None
 
-    # Autocorrelation method
-    corr = np.correlate(audio_chunk, audio_chunk, mode="full")
+    x = np.asarray(audio_chunk, dtype=np.float64) - float(np.mean(audio_chunk))
+    corr = np.correlate(x, x, mode="full")
     corr = corr[len(corr) // 2 :]  # Keep positive lags
 
-    # Find first zero crossing
-    zero_crossings = np.where(np.diff(np.sign(corr)))[0]
-    if len(zero_crossings) == 0:
+    if len(corr) == 0 or corr[0] <= 0:
+        return None
+    corr = corr / corr[0]  # normalize: lag-0 peak = 1.0
+
+    lag_min = max(1, int(sample_rate / max_hz))
+    lag_max = min(len(corr) - 1, int(sample_rate / min_hz))
+    if lag_max <= lag_min:
         return None
 
-    first_zero = zero_crossings[0]
-    if first_zero < 2:
+    window = corr[lag_min : lag_max + 1]
+    peak_lag = int(np.argmax(window)) + lag_min
+    if corr[peak_lag] < clarity:
+        # No strong periodicity -> unvoiced / noise
         return None
 
-    # Find peak in autocorrelation before first zero crossing
-    search_range = corr[:first_zero]
-    if len(search_range) == 0:
+    # Parabolic interpolation around the peak for sub-sample lag
+    peak = float(peak_lag)
+    if 1 <= peak_lag < len(corr) - 1:
+        a, b, c = corr[peak_lag - 1], corr[peak_lag], corr[peak_lag + 1]
+        denom = a - 2 * b + c
+        if abs(denom) > 1e-12:
+            peak = peak_lag + 0.5 * (a - c) / denom
+
+    if peak <= 0:
         return None
-
-    peak_lag = np.argmax(search_range)
-    if peak_lag < 1:
-        return None
-
-    pitch_hz = sample_rate / peak_lag
-
-    # Sanity check: human voice range 80-500 Hz
-    if 80 <= pitch_hz <= 500:
+    pitch_hz = sample_rate / peak
+    if min_hz <= pitch_hz <= max_hz:
         return float(pitch_hz)
     return None
 
