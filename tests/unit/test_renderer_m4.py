@@ -1270,3 +1270,87 @@ class TestRendererValidation:
         assert isinstance(content, str)
         assert len(content) > 0
         assert "[Events]" in content
+
+
+class TestSfxAnimation:
+    """Spec 2.4.4: SFX stay white + bracketed but follow animation rules."""
+
+    def _sfx_project(self):
+        events = [
+            {
+                "id": "sfx_1",
+                "type": "sound_effect",
+                "start": 0.0,
+                "end": 1.0,
+                "text": "THUNDER CRACKS",
+                "words": [
+                    {"text": "THUNDER", "start": 0.0, "end": 0.5},
+                    {"text": "CRACKS", "start": 0.5, "end": 1.0},
+                ],
+            },
+        ]
+        return _make_project(events=events, speakers=[])
+
+    def test_sfx_text_is_bracketed(self):
+        from engine.renderer.renderer import CwiRenderer
+        ass = CwiRenderer(self._sfx_project()).render_ass("dummy.mp4")
+        assert "[THUNDER" in ass and "CRACKS]" in ass
+
+    def test_sfx_words_rise_and_stay_white(self):
+        from engine.renderer.renderer import CwiRenderer
+        ass = CwiRenderer(self._sfx_project()).render_ass("dummy.mp4")
+        # Rise animation present
+        assert "\\org(-100000," in ass
+        assert "\\frz" in ass
+        # Only white color tags (FFFFFF), no speaker attribution colors
+        import re as _re
+        colors = set(_re.findall(r"\\c&H([0-9A-Fa-f]{6})&", ass))
+        assert colors == {"FFFFFF"}
+
+
+class TestBreakoutException:
+    """Spec 2.4.1: very loud bursts break out of the captions box."""
+
+    def test_loud_burst_has_no_box(self):
+        from engine.renderer.renderer import CwiRenderer
+        events = [
+            {
+                "id": "evt_loud",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 1.0,
+                "speaker_id": "spk_1",
+                "text": "GET DOWN!",
+                "words": [
+                    {"text": "GET", "start": 0.0, "end": 0.5, "size_pct": 11.0},
+                    {"text": "DOWN!", "start": 0.5, "end": 1.0, "size_pct": 12.0},
+                ],
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "S", "category": "main", "color": "#E5E517"}]
+        project = _make_project(events=events, speakers=speakers)
+        ass = CwiRenderer(project).render_ass("dummy.mp4")
+        box_lines = [
+            line for line in ass.split("\n")
+            if line.startswith("Dialogue:") and ",CwiBox," in line
+        ]
+        assert box_lines == []
+
+    def test_normal_dialogue_keeps_box(self):
+        from engine.renderer.renderer import CwiRenderer
+        events = [
+            {
+                "id": "evt_normal",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 1.0,
+                "speaker_id": "spk_1",
+                "text": "Calm line.",
+                "words": [{"text": "Calm", "start": 0.0, "end": 0.5},
+                          {"text": "line.", "start": 0.5, "end": 1.0}],
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "S", "category": "main", "color": "#E5E517"}]
+        project = _make_project(events=events, speakers=speakers)
+        ass = CwiRenderer(project).render_ass("dummy.mp4")
+        assert "CwiBox" in ass

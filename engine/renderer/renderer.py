@@ -72,6 +72,10 @@ _MARK_CLOSE = ""
 # Pop animation timing (ms), per spec section 2.2.3: grow 15%, then return.
 POP_IN_MS = 120
 POP_OUT_MS = 180
+# Spec section 2.4.1: very loud or sudden bursts of speech may break out
+# of the captions box. Threshold: a word at or above this type size (% of
+# screen height) renders WITHOUT the box.
+BREAKOUT_SIZE_PCT = 10.0
 
 def _opacity_to_alpha(opacity: float) -> int:
     """Convert opacity (0.0-1.0) to an ASS alpha byte.
@@ -287,7 +291,9 @@ class CwiRenderer:
             )
 
             if event_type == "sound_effect":
-                events.extend(self._build_sfx_line(event))
+                events.extend(
+                    self._build_sfx_line(event, screen_width, screen_height)
+                )
             elif event_type == "music":
                 events.extend(self._build_music_line(event))
             else:
@@ -487,6 +493,12 @@ class CwiRenderer:
         """
         sentence, spans = self._compose_word_spans(event, screen_height)
         alpha = _opacity_to_alpha(event.style.read_ahead_opacity)
+        # Spec section 2.4.1 breakout exception: very loud bursts break
+        # out of the captions box - render the text with no box at all.
+        breakout = any(
+            span["size_px"] >= round(screen_height * BREAKOUT_SIZE_PCT / 100.0)
+            for span in spans
+        )
         # Rise origin: far left of the caption baseline (see _pop_tags).
         # org_y only needs to be near the text line - a few % of screen
         # height of error shifts the lift by a fraction of a pixel.
@@ -623,11 +635,12 @@ class CwiRenderer:
             if italic_tag:
                 tags["italic"] = italic_tag
 
-            lines.append(
-                self._build_box_line(
-                    start, end, box_text, box_span_tags, event.id
+            if not breakout:
+                lines.append(
+                    self._build_box_line(
+                        start, end, box_text, box_span_tags, event.id
+                    )
                 )
-            )
             lines.append(
                 {
                     "start": start,
@@ -715,16 +728,40 @@ class CwiRenderer:
             "style": "CwiBox",
         }
 
-    def _build_sfx_line(self, event: CaptionEvent) -> list[dict]:
-        """Build an SFX dialogue line (white text with brackets, no color animation)."""
+    def _build_sfx_line(
+        self, event: CaptionEvent, screen_width: int, screen_height: int
+    ) -> list[dict]:
+        """Build SFX dialogue lines (white text in brackets).
+
+        Spec section 2.4.4: sound effects always appear in white inside
+        brackets, but still follow the CWI animation rules - loud sounds
+        increase in type size and the words rise in sync with the sound.
+        So when the event carries word timings, SFX goes through the same
+        timed-lines path as dialogue, just with a white attribution color.
+        """
+        text = event.text or ""
+        if text and not text.lstrip().startswith("["):
+            text = f"[{text.strip()}]"
+            if event.text:
+                event = event.model_copy(update={"text": text})
+        if event.words:
+            lines = self._build_timed_lines(
+                event,
+                "&HFFFFFF&",
+                screen_height,
+                "",
+                sync_enabled=True,
+                screen_width=screen_width,
+            )
+            for line in lines:
+                line["type"] = "sfx"
+            return lines
         return [
-            self._build_box_line(
-                event.start, event.end, event.text or "", [], event.id
-            ),
+            self._build_box_line(event.start, event.end, text, [], event.id),
             {
                 "start": event.start,
                 "end": event.end,
-                "text": event.text or "",
+                "text": text,
                 "type": "sfx",
                 "tags": {
                     "color": "\\c&HFFFFFF&\\alpha&H1A&",

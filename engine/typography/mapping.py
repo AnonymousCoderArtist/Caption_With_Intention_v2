@@ -51,30 +51,26 @@ def pitch_to_weight(
     if pitch_hz is None:
         return baseline_weight
 
+    # Spec section 2.3.9 chart: 80 Hz -> 1000 (heaviest),
+    # 160-200 Hz -> Regular 400 (baseline), 250+ Hz -> 100 (lightest).
     if pitch_hz < 80:
-        # Very low pitch — heavy/bold
-        return 700
+        return 1000
     elif pitch_hz < 160:
-        # Low pitch — moderately heavy
-        # Linear interpolation from 700 (at 80Hz) to 500 (at 160Hz)
         t = (pitch_hz - 80) / (160 - 80)
-        return int(700 - t * 200)
+        return int(round(1000 - t * 600))
     elif pitch_hz <= 200:
-        # Baseline range — neutral Regular 400
         return baseline_weight
-    elif pitch_hz <= 300:
-        # High pitch — lighter
-        t = (pitch_hz - 200) / (300 - 200)
-        return int(baseline_weight - t * 200)
+    elif pitch_hz <= 250:
+        t = (pitch_hz - 200) / (250 - 200)
+        return int(round(baseline_weight - t * 300))
     else:
-        # Very high pitch — lightest
         return max(100, baseline_weight - 300)
 
 
 def harmonics_to_width(
     low_harmonic_energy: float,
     high_harmonic_energy: float,
-    min_width: int = 50,
+    min_width: int = 25,
     max_width: int = 150,
 ) -> int:
     """Map harmonic content to font width axis.
@@ -82,11 +78,11 @@ def harmonics_to_width(
     Args:
         low_harmonic_energy: Energy in low-frequency harmonics (0-1).
         high_harmonic_energy: Energy in high-frequency harmonics (0-1).
-        min_width: Minimum width value.
-        max_width: Maximum width value.
+        min_width: Minimum width value (spec 2.3.9 chart: 25).
+        max_width: Maximum width value (spec 2.3.9 chart: 150).
 
     Returns:
-        Width value (50=condensed to 150=expanded).
+        Width value (25=most condensed to 150=expanded, spec 2.3.9).
     """
     # Low harmonics dominant → wider; High harmonics dominant → narrower
     ratio = low_harmonic_energy / (high_harmonic_energy + 0.001)

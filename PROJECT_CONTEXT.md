@@ -6,10 +6,11 @@ CWI transforms closed captions into an expressive, accessible experience (color 
 ## Branch Status
 - **Branch**: `master`
 - **Milestones**: M0 ✅, M1 ✅, M2 ✅, M3 ✅, M4 ✅ (polished), M5 ✅ (editor engine + visual UI), M6 ✅ (ASR + word alignment)
-- **Tests**: 496 Python + 19 frontend (all green via `uv run pytest`)
+- **Tests**: 500 Python + 19 frontend (all green via `uv run pytest`)
 - **Tooling**: uv manages the venv, lockfile (`uv.lock`), and all Python commands (`uv sync`, `uv run`)
 - **M10 partial ✅ (2026-11-22)**: alignment/syllables.py — rule-based syllable splitting, per-word timing (proportional, snapped to acoustic energy dips when audio given), auto word-vs-syllable animation decision; output shape matches editor/renderer syllable dicts. Remaining: phoneme-level alignment (needs gpu extra), manual syllable editor UI hookup
 - **M9 partial ✅ (2026-11-22)**: intonation.py — per-word loudness/pitch/harmonics → CI typography with cross-word smoothing; estimate_pitch() rewritten (normalized autocorrelation, 80–500 Hz bounded lags, parabolic interpolation — the old first-zero-crossing version returned None for all pure tones). Remaining: wire into SpeechPipeline output + editor view
+- **Fidelity audit (2026-11-22)**: SFX animate per spec 2.4.4 (white + bracketed, loudness sizing, onset rise); loud bursts (>=10% screen height) break out of the box per spec 2.4.1 (BREAKOUT_SIZE_PCT); pitch-to-weight and harmonics-to-width ranges matched to the 2.3.9 charts (weight 100-1000, width 25-150)
 - **Next**: M7 — Speaker diarization (spec §M7; default backend is now Nemotron 3 Diarization via audio.cpp — 2026-09-24; cross-chunk identity reconciliation ✅ in reconcile.py — remaining: embedding-based matching for chunks without usable overlap, and wiring reconciliation into the M13 long-video runner)
 
 ## Directory Tree
