@@ -523,7 +523,7 @@ class Editor:
 
         Args:
             event_id: Target event ID.
-            pop_scale: Pop scale multiplier (default 1.15).
+            pop_scale: Onset rise multiplier (default 1.25 = 25% elevation).
             pop_duration: Pop animation duration in seconds.
             pop_easing: Easing curve ('smooth', 'ease_in', 'ease_out').
             syllable_mode: Enable syllable-level animation.

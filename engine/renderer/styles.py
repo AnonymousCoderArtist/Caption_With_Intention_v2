@@ -15,7 +15,7 @@ from schemas.project import Speaker
 DEFAULT_WORK_AREA_BOTTOM_PCT = 20.0   # lower 20% of frame
 DEFAULT_CAPTION_BOX_OPACITY = 0.90    # 90% black
 DEFAULT_READ_AHEAD_OPACITY = 0.90     # 90% white
-DEFAULT_POP_SCALE = 1.15              # 15% increase
+DEFAULT_POP_SCALE = 1.25              # 25% rise elevation at onset
 DEFAULT_BASELINE_SIZE_PCT = 5.0       # baseline type size
 DEFAULT_MIN_SIZE_PCT = 3.0
 DEFAULT_MAX_SIZE_PCT = 12.0
@@ -74,7 +74,7 @@ def compute_word_style(
         baseline_pct: Baseline type size % of screen height.
         maximum_pct: Maximum type size % of screen height.
         baseline_weight: Baseline font weight.
-        pop_scale: Pop motion scale multiplier (e.g. 1.15 = 15% increase).
+        pop_scale: Onset rise multiplier (1.25 = rise by 25% of type height).
         italic: Whether the text should be italic.
 
     Returns:

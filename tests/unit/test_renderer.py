@@ -95,7 +95,7 @@ class TestComputeWordStyle:
     def test_pop_size(self):
         style = compute_word_style(loudness=0.5)
         assert style["pop_size_pct"] > style["size_pct"]
-        assert abs(style["pop_size_pct"] - 7.5 * 1.15) < 0.01
+        assert abs(style["pop_size_pct"] - 7.5 * 1.25) < 0.01
 
 
 class TestComputeWorkAreaPosition:

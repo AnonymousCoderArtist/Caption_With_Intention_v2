@@ -349,10 +349,10 @@ class TestWordOnsetColorSync:
 # ─── Pop Animation Tests ──────────────────────────────
 
 class TestPopAnimation:
-    """Spec §4.2.3: 15% type size pop at word onset."""
+    """Spec §2.2.3: words RISE at onset (25% elevation), they do not scale."""
 
-    def test_pop_scale_15_pct(self):
-        """Pop animation uses 15% scale increase (1.15x)."""
+    def test_rise_25_pct_elevation(self):
+        """Onset animation is a rise (\\org + \\frz), not a scale."""
         events = [
             {
                 "id": "evt_1",
@@ -372,9 +372,11 @@ class TestPopAnimation:
         renderer = CwiRenderer(project)
         ass = renderer.render_ass("dummy.mp4")
 
-        # 15% pop → \fscx115\fscy115 in ASS
-        assert "\\fscx115" in ass
-        assert "\\fscy115" in ass
+        # Rise = rotation around a far-left origin (perpendicular lift)
+        assert "\\org(-100000," in ass
+        assert "\\frz" in ass
+        # Words must not scale at onset - size is intonation-driven only
+        assert "\\fscx115" not in ass
 
     def test_pop_on_word_overlay_lines(self):
         """Pop tags appear on word overlay lines (not read-ahead)."""
@@ -397,8 +399,9 @@ class TestPopAnimation:
         renderer = CwiRenderer(project)
         ass = renderer.render_ass("dummy.mp4")
 
-        # Pop tags should be in the ASS output on word overlay lines
-        assert "\\fscx115\\fscy115" in ass
+        # Rise tags should be in the ASS output on word overlay lines
+        assert "\\org(-100000," in ass
+        assert "\\frz" in ass
 
 
 # ─── SFX Rules Tests ──────────────────────────────────
@@ -913,8 +916,8 @@ class TestTimelineVerification:
         renderer = CwiRenderer(project)
         ass = renderer.render_ass("dummy.mp4")
 
-        # Pop scale tags should be present
-        assert "\\fscx115" in ass
+        # Rise tags should be present
+        assert "\\frz" in ass
         # Word overlays with pop should start at word onset, not event start
         for line in ass.split("\n"):
             if line.startswith("Dialogue:") and "onset" in line and "Pop" not in line:
@@ -927,7 +930,7 @@ class TestStyleDrivenRendering:
     """Verify renderer uses event.style values instead of hardcoded constants."""
 
     def test_custom_pop_scale(self):
-        """Renderer uses event.style.pop_scale, not hardcoded 1.15."""
+        """Renderer uses event.style.pop_scale for the rise height."""
         events = [
             {
                 "id": "evt_1",
@@ -937,7 +940,7 @@ class TestStyleDrivenRendering:
                 "speaker_id": "spk_1",
                 "text": "Test.",
                 "words": [{"text": "Test", "start": 0.0, "end": 0.5}],
-                "style": {"pop_scale": 1.25},
+                "style": {"pop_scale": 1.5},
             },
         ]
         speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E5E517"}]
@@ -945,12 +948,10 @@ class TestStyleDrivenRendering:
         renderer = CwiRenderer(project)
         ass = renderer.render_ass("dummy.mp4")
 
-        # 1.25 pop → \fscx125\fscy125
-        assert "\\fscx125" in ass
-        assert "\\fscy125" in ass
-        # Default 1.15 should NOT be present
-        assert "\\fscx115" not in ass
-
+        # 1.5 rise = 50% elevation on a 54px span at ~100960px radius
+        assert "\\frz0.01532" in ass
+        # Default 25% elevation (theta 0.00766) should NOT be present
+        assert "\\frz0.00766" not in ass
     def test_custom_read_ahead_opacity(self):
         """Renderer uses event.style.read_ahead_opacity, not hardcoded 0.90."""
         events = [
@@ -973,8 +974,8 @@ class TestStyleDrivenRendering:
         # 0.75 opacity → ASS alpha = round(0.25*255) = 64 = 0x40 (inverted)
         assert "\\alpha&H40&" in ass
 
-    def test_default_pop_scale_is_15_pct(self):
-        """Default pop_scale 1.15 produces 15% pop."""
+    def test_default_pop_rise_is_25_pct(self):
+        """Default pop_scale 1.25 produces a 25% rise."""
         events = [
             {
                 "id": "evt_1",
@@ -990,9 +991,9 @@ class TestStyleDrivenRendering:
         project = _make_project(events=events, speakers=speakers)
         renderer = CwiRenderer(project)
         ass = renderer.render_ass("dummy.mp4")
-        assert "\\fscx115" in ass
+        assert "\\frz0.00766" in ass
 
-    def test_default_read_ahead_is_90_pct(self):
+        assert "\\frz0.00766" in ass
         """Default read_ahead_opacity 0.90 produces 90% white."""
         events = [
             {

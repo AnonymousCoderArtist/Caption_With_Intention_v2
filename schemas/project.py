@@ -49,7 +49,7 @@ class Word(BaseModel):
 
 class Style(BaseModel):
     read_ahead_opacity: float = 0.90
-    pop_scale: float = 1.15
+    pop_scale: float = 1.25
     size_pct: float = 5.0
     weight: int = 400
     width: int = 100

@@ -38,7 +38,9 @@ survive the exporter and are replaced during injection.
 from __future__ import annotations
 
 import logging
+import math
 import re
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -328,6 +330,7 @@ class CwiRenderer:
                         sync_enabled=toggles.get(
                             "synchronization_color_layer_on_off", True
                         ),
+                        screen_width=screen_width,
                     )
                 )
 
@@ -399,30 +402,46 @@ class CwiRenderer:
 
     def _geometry_tags(self, span: dict) -> str:
         """ASS tags pinning a span to its read-ahead geometry."""
-        tags = f"\\fs{span['size_px']}{span['bold']}"
+        tags = f"\\fs{span['size_px']}{span['bold']}\\frz0"
         if span["width"] != 100:
             tags += f"\\fscx{span['width']}"
         return tags
 
-    def _pop_tags(self, span: dict, pop_scale: float, duration_ms: float) -> str:
-        """Pop animation tags for the word/syllable at its onset.
+    def _pop_tags(
+        self,
+        span: dict,
+        pop_scale: float,
+        duration_ms: float,
+        org_y: int,
+        org_distance: float,
+    ) -> str:
+        """Rise animation tags for the word/syllable at its onset.
 
-        Grows the unit by pop_scale (default 15%) over POP_IN_MS, then
-        returns it to its original size (spec section 2.2.3).
+        The unit RISES by (pop_scale - 1) of its type height over
+        POP_IN_MS, then returns over POP_OUT_MS (spec section 2.2.3:
+        "25% elevation"; the words come up, they do not scale - size
+        changes belong to the intonation layer only).
+
+        libass has no per-span translate, so the rise is a tiny rotation
+        around an origin far to the left (org_distance px): the radius is
+        near-horizontal, so the arc is a vertical lift to sub-pixel
+        precision and the 0.00X° tilt is imperceptible.
         """
-        if duration_ms <= 0:
+        if duration_ms <= 0 or pop_scale <= 1.0:
             return ""
         t1 = int(min(POP_IN_MS, duration_ms / 2))
         t2 = int(min(POP_IN_MS + POP_OUT_MS, duration_ms))
         if t1 <= 0 or t2 <= t1:
             return ""
-        popx = round(span["width"] * pop_scale)
-        popy = round(100 * pop_scale)
+        elevation_px = (pop_scale - 1.0) * span["size_px"]
+        theta_deg = math.degrees(elevation_px / org_distance)
+        # org sits a fixed 100000px left of the line start; org_distance
+        # (100000 + half screen width) approximates the span radius.
         return (
-            f"\\t(0,{t1},\\fscx{popx}\\fscy{popy})"
-            f"\\t({t1},{t2},\\fscx{span['width']}\\fscy100)"
+            f"\\org(-100000,{org_y})"
+            f"\\t(0,{t1},\\frz{theta_deg:.5f})"
+            f"\\t({t1},{t2},\\frz0)"
         )
-
     def _sync_points(self, event: CaptionEvent) -> list[tuple[float, int, Optional[int]]]:
         """Sorted (time, word_index, syllable_index) onset points.
 
@@ -453,6 +472,7 @@ class CwiRenderer:
         screen_height: int,
         italic_tag: str,
         sync_enabled: bool = True,
+        screen_width: int = 1920,
     ) -> list[dict]:
         """Build the caption lines for a dialogue event.
 
@@ -467,6 +487,11 @@ class CwiRenderer:
         """
         sentence, spans = self._compose_word_spans(event, screen_height)
         alpha = _opacity_to_alpha(event.style.read_ahead_opacity)
+        # Rise origin: far left of the caption baseline (see _pop_tags).
+        # org_y only needs to be near the text line - a few % of screen
+        # height of error shifts the lift by a fraction of a pixel.
+        org_y = round(screen_height * 0.92)
+        org_distance = 100000.0 + screen_width / 2.0
         white = f"\\c&HFFFFFF&\\alpha&H{alpha:02X}&"
 
         if not spans:
@@ -551,7 +576,11 @@ class CwiRenderer:
                         tag = (
                             f"\\c{speaker_color}&{geometry}"
                             + self._pop_tags(
-                                span, event.style.pop_scale, duration_ms
+                                span,
+                                event.style.pop_scale,
+                                duration_ms,
+                                org_y,
+                                org_distance,
                             )
                         )
                         _emit(span["text"], tag)
@@ -580,7 +609,11 @@ class CwiRenderer:
                                     syl_text,
                                     f"\\c{speaker_color}&{geometry}"
                                     + self._pop_tags(
-                                        span, event.style.pop_scale, duration_ms
+                                        span,
+                                        event.style.pop_scale,
+                                        duration_ms,
+                                        org_y,
+                                        org_distance,
                                     ),
                                 )
                             else:
@@ -787,7 +820,9 @@ class CwiRenderer:
         wrapped = "\n".join(
             encoded[i : i + 80] for i in range(0, len(encoded), 80)
         )
-        return f"[Fonts]\nfontname: {self.font_path.name}\n{wrapped}\n"
+        # Use the family name, not the file name: libass matches the
+        # attachment against style/span font names (\fnRoboto Flex).
+        return f"[Fonts]\nfontname: {CWI_FONT_FAMILY}\n{wrapped}\n"
 
     def _inject_cwi_overrides(
         self,
@@ -877,6 +912,31 @@ class CwiRenderer:
 
     # ─── FFmpeg ───────────────────────────────────────────────────
 
+    @staticmethod
+    def _ass_escape_filter_path(path: Path) -> str:
+        """Escape a path for use inside an ffmpeg filtergraph option."""
+        text = str(path)
+        return (
+            text.replace("\\", "\\\\")
+            .replace(":", "\\:")
+            .replace("'", "\\'")
+        )
+
+    def _stage_fontsdir(self, ass_path: Path) -> str | None:
+        """Copy the CWI font next to the ASS file for libass fontsdir use.
+
+        Returns the filter-escaped fontsdir path, or None when no font
+        file is configured.
+        """
+        if not self.font_path or not self.font_path.exists():
+            return None
+        fonts_dir = ass_path.parent / ".cwi-fonts"
+        fonts_dir.mkdir(parents=True, exist_ok=True)
+        target = fonts_dir / self.font_path.name
+        if not target.exists():
+            shutil.copy2(self.font_path, target)
+        return self._ass_escape_filter_path(fonts_dir)
+
     def _build_ffmpeg_command(
         self,
         source_path: Path,
@@ -888,13 +948,18 @@ class CwiRenderer:
         Uses the subtitles filter for ASS rendering and
         stream copy for audio when preserve_audio is True.
         """
+        # Stage the CWI typeface into a fontsdir so libass picks up the
+        # real Roboto Flex even when it ignores [Fonts] attachments
+        # (this ffmpeg/libass build does).
+        fontsdir = self._stage_fontsdir(ass_path)
+        fontsdir_opt = f":fontsdir={fontsdir}" if fontsdir else ""
         if self.scale:
             vf_filter = (
-                f"subtitles={ass_path}:"
+                f"subtitles={ass_path}{fontsdir_opt},"
                 f"scale={self.scale[0]}:{self.scale[1]}"
             )
         else:
-            vf_filter = f"subtitles={ass_path}"
+            vf_filter = f"subtitles={ass_path}{fontsdir_opt}"
         cmd = [
             "ffmpeg",
             "-y",
