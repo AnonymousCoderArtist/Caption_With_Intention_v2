@@ -38,11 +38,21 @@ from engine.audio_analysis.basic import (
     estimate_pitch,
     smooth_signal,
 )
-from engine.typography.mapping import compute_word_typography
+from engine.typography.mapping import (
+    compute_word_typography,
+    pitch_to_weight,
+)
 
 # Normal-speech anchor: loudness 0.5 maps to the 5% baseline type
 # size (see typography.mapping.volume_to_size).
 NORMAL_SPEECH_LOUDNESS = 0.5
+
+# Voice-register stabilization (spec 2.3.8-2.3.9): weight and width
+# encode the voice's overall character, not per-word fluctuations.
+# Width deviation from the scene's median harmonic balance is scaled
+# by this factor (speech measures ~0.88 low-dominant with the 1 kHz
+# split and must render at neutral width 100).
+WIDTH_DEVIATION_SCALE = 150.0
 
 logger = logging.getLogger("caption_with_intention")
 
@@ -249,6 +259,36 @@ class IntonationAnalyzer:
                     reliable=reliable,
                 )
             )
+
+        # Voice-register stabilization (spec 2.3.8-2.3.9). Per-word
+        # pitch estimates on short words are octave-noisy (one narrator
+        # measured 95-331 Hz across a single sentence) and speech
+        # harmonics are near-constant, so raw per-word weight/width
+        # flicker word to word. Weight instead uses the scene's median
+        # pitch for every word; width is relative to the scene's median
+        # harmonic balance, so typical speech renders at neutral width
+        # 100 and only genuinely unusual textures deviate.
+        voiced = [w.pitch_hz for w in out if w.pitch_hz is not None]
+        med_pitch = statistics.median(voiced) if voiced else None
+        balances = [
+            w.low_harmonic / (w.low_harmonic + w.high_harmonic)
+            for w in out
+            if w.reliable and (w.low_harmonic + w.high_harmonic) > 0
+        ]
+        med_bal = statistics.median(balances) if balances else None
+        for w in out:
+            typo = dict(w.typography)
+            typo["weight"] = pitch_to_weight(med_pitch)
+            width = 100
+            if med_bal is not None and w.reliable:
+                tot = w.low_harmonic + w.high_harmonic
+                if tot > 0:
+                    dev = (w.low_harmonic / tot) - med_bal
+                    width = round(
+                        min(150.0, max(25.0, 100 + dev * WIDTH_DEVIATION_SCALE))
+                    )
+            typo["width"] = width
+            w.typography = typo
 
         logger.info(
             "Intonation analysis: %d words (%d unreliable) over %.2fs",

@@ -875,6 +875,17 @@ class CwiRenderer:
             return min(esc_cap_px, round(span["size_px"] * mult))
 
         points = self._sync_points(event) if sync_enabled else []
+        if points and event.words:
+            # Terminal settle point: once the final word's spoken window
+            # ends, the caption returns to settled state (user rule: a
+            # word comes back to its original position after it is
+            # spoken). Without this the final word holds its pop until
+            # event end — and for a split caption's FIRST line (whose
+            # words end mid-event) that left the line's last word
+            # floating above the box for the rest of the event.
+            last_spoken_end = max(float(w.end) for w in event.words)
+            if points[-1][0] < last_spoken_end < event.end:
+                points.append((last_spoken_end, len(event.words), None))
         intervals: list[tuple[float, float, Optional[int], Optional[int]]] = []
         if not points:
             intervals.append((event.start, event.end, None, None))
@@ -888,6 +899,11 @@ class CwiRenderer:
 
         lines: list[dict] = []
         pulsing = bool(points)
+        # Off-camera italic appears when each word is SPOKEN, not during
+        # read-ahead (user rule 2026-11-22: "the italic bold will appear
+        # when it's spoken, not from earlier"). Bold already follows the
+        # same rule via the read-ahead baseline geometry.
+        ital = "\\i1" if italic_tag else ""
         for start, end, cur_word, cur_syl in intervals:
             if end - start <= 0:
                 continue
@@ -989,11 +1005,13 @@ class CwiRenderer:
                 else:
                     geometry = _baseline_geometry()
                 if cur_word is None or i > cur_word:
-                    # Unspoken (or pre-onset): read-ahead white.
+                    # Unspoken (or pre-onset): read-ahead white, roman.
                     _emit(span["text"], white + geometry)
                 elif i < cur_word:
                     # Already spoken: solid speaker color, no pop.
-                    _emit(span["text"], f"\\c{speaker_color}&{geometry}")
+                    _emit(
+                        span["text"], f"\\c{speaker_color}&{ital}{geometry}"
+                    )
                 else:
                     # Current word at its onset.
                     word = span["word"]
@@ -1066,12 +1084,13 @@ class CwiRenderer:
                                     else pop
                                 )
                                 _emit(
-                                    ch, white + geometry + letter_pop + sweep
+                                    ch,
+                                    white + geometry + letter_pop + sweep,
                                 )
                         else:
                             _emit(
                                 span["text"],
-                                f"\\c{speaker_color}&{geometry}" + pop,
+                                f"\\c{speaker_color}&{ital}{geometry}" + pop,
                             )
                     else:
                         # Syllable variation: color in syllable by syllable,
@@ -1110,12 +1129,13 @@ class CwiRenderer:
                                     )
                                 _emit(
                                     syl_text,
-                                    f"\\c{speaker_color}&{geometry}" + hold,
+                                    f"\\c{speaker_color}&{ital}{geometry}"
+                                    + hold,
                                 )
                             elif j == cur_syl:
                                 _emit(
                                     syl_text,
-                                    f"\\c{speaker_color}&{geometry}"
+                                    f"\\c{speaker_color}&{ital}{geometry}"
                                     + self._pop_tags(
                                         span,
                                         event.style.pop_scale,
@@ -1129,8 +1149,6 @@ class CwiRenderer:
                                 _emit(syl_text, white + geometry)
 
             tags = {"font": f"\\fn{CWI_FONT_FAMILY}"}
-            if italic_tag:
-                tags["italic"] = italic_tag
 
             if not breakout:
                 lines.append(

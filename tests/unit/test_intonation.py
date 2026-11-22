@@ -11,6 +11,7 @@ from engine.audio_analysis.intonation import (
     IntonationAnalyzer,
     estimate_harmonic_energies,
 )
+from engine.typography.mapping import pitch_to_weight
 
 SR = DEFAULT_SAMPLE_RATE
 
@@ -103,15 +104,34 @@ class TestIntonationAnalyzer:
         assert shout.typography["size_pct"] > calm.typography["size_pct"]
 
     def test_low_pitch_heavier_weight(self):
-        audio = _concat(_sine(120, 0.4), _sine(280, 0.4))
-        words = [Word("deep", 0.0, 0.4), Word("high", 0.4, 0.8)]
+        # A scene spoken in a single deep register renders heavy: the
+        # weight comes from the scene's median pitch (spec 2.3.8-2.3.9
+        # maps the voice's character, not per-word wobble).
+        audio = _concat(_sine(120, 0.4), _sine(120, 0.4))
+        words = [Word("deep", 0.0, 0.4), Word("voice", 0.4, 0.8)]
         a = IntonationAnalyzer(smooth_window=1)
         result = a.analyze(audio, SR, words)
-        deep, high = result.words
+        deep, voice = result.words
         assert deep.pitch_hz is not None
         assert deep.pitch_hz == pytest.approx(120, abs=15)
         assert deep.typography["weight"] > 400
-        assert high.typography["weight"] < deep.typography["weight"]
+        # Every word in the scene carries the same stable weight.
+        assert voice.typography["weight"] == deep.typography["weight"]
+
+    def test_mixed_pitch_scene_uses_median_weight(self):
+        # Octave-noisy per-word estimates must not flicker the weight:
+        # a scene mixing 120 Hz and 280 Hz estimates lands on the
+        # median register for every word.
+        audio = _concat(_sine(120, 0.4), _sine(280, 0.4), _sine(180, 0.4))
+        words = [
+            Word("a", 0.0, 0.4),
+            Word("b", 0.4, 0.8),
+            Word("c", 0.8, 1.2),
+        ]
+        result = IntonationAnalyzer(smooth_window=1).analyze(audio, SR, words)
+        weights = {w.typography["weight"] for w in result.words}
+        assert len(weights) == 1
+        assert weights.pop() == pitch_to_weight(180)
 
     def test_baseline_pitch_neutral_weight(self):
         audio = _sine(180, 0.4)
