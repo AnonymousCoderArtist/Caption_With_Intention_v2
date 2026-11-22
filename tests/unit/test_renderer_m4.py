@@ -208,11 +208,11 @@ class TestWordOnsetColorSync:
         # Overlay lines carry the full sentence; find them by start time.
         hello_line = next(
             l for l in dialogue_lines
-            if l.startswith("Dialogue: 0,0:00:01.00,") and "\\fnRoboto Flex" in l
+            if l.startswith("Dialogue: 1,0:00:01.00,") and "\\fnRoboto Flex" in l
         )
         world_line = next(
             l for l in dialogue_lines
-            if l.startswith("Dialogue: 0,0:00:01.80,") and "\\fnRoboto Flex" in l
+            if l.startswith("Dialogue: 1,0:00:01.80,") and "\\fnRoboto Flex" in l
         )
         # Speaker color (yellow #E5E517 -> BGR &H17E5E5) appears at onsets.
         assert "\\c&H17E5E5&" in hello_line
@@ -488,9 +488,63 @@ class TestSFXRules:
         renderer = CwiRenderer(project)
         ass = renderer.render_ass("dummy.mp4")
 
-        # SFX should be a single dialogue line (no word overlays)
-        sfx_lines = [l for l in ass.split("\n") if l.startswith("Dialogue:") and "[SFX]" in l]
+        # SFX should be a single text-layer line (plus its box companion)
+        sfx_lines = [l for l in ass.split("\n") if l.startswith("Dialogue: 1,") and "[SFX]" in l]
         assert len(sfx_lines) == 1, f"SFX should be one line, got: {len(sfx_lines)}"
+
+
+class TestCaptionBox:
+    """Spec section 2.4.1: one continuous 90% black box hugging each line."""
+
+    def test_box_companion_per_text_line(self):
+        events = [
+            {
+                "id": "evt_1",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 2.0,
+                "speaker_id": "spk_1",
+                "text": "Hello world",
+                "words": [
+                    {"text": "Hello", "start": 0.0, "end": 0.5},
+                    {"text": "world", "start": 0.5, "end": 1.0},
+                ],
+                "style": {},
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E5E517"}]
+        project = _make_project(events=events, speakers=speakers)
+        renderer = CwiRenderer(project)
+        ass = renderer.render_ass("dummy.mp4")
+
+        lines = [l for l in ass.split("\n") if l.startswith("Dialogue:")]
+        box_lines = [l for l in lines if l.startswith("Dialogue: 0,")]
+        text_lines = [l for l in lines if l.startswith("Dialogue: 1,")]
+        # Every text line has exactly one box companion on the layer below
+        assert len(box_lines) == len(text_lines)
+        assert len(box_lines) >= 2
+        assert all(",CwiBox," in l for l in box_lines)
+        assert all(",Default," in l for l in text_lines)
+        # Box companions carry the full sentence but no color overrides
+        assert all("\\c&H" not in l for l in box_lines)
+        assert all("Hello" in l for l in box_lines)
+        # Box companions and text lines share start/end times
+        box_times = sorted(l.split(",")[1:3] for l in box_lines)
+        text_times = sorted(l.split(",")[1:3] for l in text_lines)
+        assert box_times == text_times
+
+    def test_box_style_continuous_90pct_black(self):
+        project = _make_project(events=[], speakers=[])
+        renderer = CwiRenderer(project)
+        ass = renderer.render_ass("dummy.mp4")
+        box_style = next(l for l in ass.split("\n") if l.startswith("Style: CwiBox,"))
+        # BorderStyle=3 (continuous box) with 90% black BackColour (&H1A...)
+        assert "&H1A000000" in box_style
+        fields = box_style.split(",")
+        assert fields[15] == "3"  # BorderStyle field
+        # Text layer itself draws no box
+        default_style = next(l for l in ass.split("\n") if l.startswith("Style: Default,"))
+        assert default_style.split(",")[15] == "1"
 
 
 # ─── Music Rules Tests ────────────────────────────────
@@ -553,8 +607,8 @@ class TestMusicRules:
         renderer = CwiRenderer(project)
         ass = renderer.render_ass("dummy.mp4")
 
-        # Music should be a single line, no word overlays
-        music_lines = [l for l in ass.split("\n") if l.startswith("Dialogue:") and "synth" in l]
+        # Music should be a single text-layer line (plus its box companion)
+        music_lines = [l for l in ass.split("\n") if l.startswith("Dialogue: 1,") and "synth" in l]
         assert len(music_lines) == 1, f"Music should be one line, got: {len(music_lines)}"
 
 
@@ -1073,9 +1127,9 @@ class TestSyllableMode:
 
         # Full word should appear
         assert "Testing" in ass
-        # Exactly 1 dialogue line (single onset interval, no syllable split),
-        # not 2+ (which would indicate syllable-level lines)
-        dialogue_lines = [l for l in ass.split("\n") if l.startswith("Dialogue:")]
+        # Exactly 1 text-layer line (single onset interval, no syllable
+        # split), not 2+ (which would indicate syllable-level lines)
+        dialogue_lines = [l for l in ass.split("\n") if l.startswith("Dialogue: 1,")]
         assert len(dialogue_lines) == 1
 
     def test_syllable_mode_fallback_no_syllables(self):

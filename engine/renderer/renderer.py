@@ -285,9 +285,9 @@ class CwiRenderer:
             )
 
             if event_type == "sound_effect":
-                events.append(self._build_sfx_line(event))
+                events.extend(self._build_sfx_line(event))
             elif event_type == "music":
-                events.append(self._build_music_line(event))
+                events.extend(self._build_music_line(event))
             else:
                 speaker = None
                 if event.speaker_id and event.speaker_id in speaker_map:
@@ -474,6 +474,9 @@ class CwiRenderer:
             if italic_tag:
                 tags["italic"] = italic_tag
             return [
+                self._build_box_line(
+                    event.start, event.end, sentence, [], event.id
+                ),
                 {
                     "start": event.start,
                     "end": event.end,
@@ -481,8 +484,23 @@ class CwiRenderer:
                     "type": "dialogue",
                     "parent_event_id": event.id,
                     "tags": tags,
-                }
+                    "layer": 1,
+                    "style": "Default",
+                },
             ]
+
+        # Caption box companion: identical geometry for every interval
+        # (per-span size/weight/width, no colors, no pop), rendered by the
+        # CwiBox style as one continuous 90% black box hugging the full
+        # line (spec section 2.4.1-2.4.2). The box never splits per span
+        # and never grows during a pop.
+        box_span_tags: list[str] = []
+        box_parts: list[str] = []
+        for span in spans:
+            _emit_span(
+                box_span_tags, box_parts, span["text"], self._geometry_tags(span)
+            )
+        box_text = "".join(box_parts)
 
         points = self._sync_points(event) if sync_enabled else []
         intervals: list[tuple[float, float, Optional[int], Optional[int]]] = []
@@ -573,6 +591,11 @@ class CwiRenderer:
                 tags["italic"] = italic_tag
 
             lines.append(
+                self._build_box_line(
+                    start, end, box_text, box_span_tags, event.id
+                )
+            )
+            lines.append(
                 {
                     "start": start,
                     "end": end,
@@ -584,6 +607,8 @@ class CwiRenderer:
                     "speaker_id": event.speaker_id,
                     "tags": tags,
                     "span_tags": span_tags,
+                    "layer": 1,
+                    "style": "Default",
                 }
             )
 
@@ -630,31 +655,72 @@ class CwiRenderer:
             )
             return default_toggles
 
-    def _build_sfx_line(self, event: CaptionEvent) -> dict:
-        """Build an SFX dialogue line (white text with brackets, no color animation)."""
+    def _build_box_line(
+        self,
+        start: float,
+        end: float,
+        text: str,
+        span_tags: list[str],
+        parent_event_id: str,
+    ) -> dict:
+        """Build the caption-box companion for a caption line.
+
+        Same text and geometry as the caption it backs, rendered with the
+        CwiBox style: near-invisible text over a continuous 90% black box
+        (BorderStyle=3) that hugs the full line and stays constant while
+        words pop (spec section 2.4.1).
+        """
         return {
-            "start": event.start,
-            "end": event.end,
-            "text": event.text or "",
-            "type": "sfx",
-            "tags": {
-                "color": "\\c&HFFFFFF&\\alpha&H1A&",
-                "font": f"\\fn{CWI_FONT_FAMILY}",
-            },
+            "start": start,
+            "end": end,
+            "text": text,
+            "type": "box",
+            "parent_event_id": parent_event_id,
+            "tags": {"font": f"\\fn{CWI_FONT_FAMILY}"},
+            "span_tags": list(span_tags),
+            "layer": 0,
+            "style": "CwiBox",
         }
 
-    def _build_music_line(self, event: CaptionEvent) -> dict:
-        """Build a music dialogue line (white text with music symbol, no word animation)."""
-        return {
-            "start": event.start,
-            "end": event.end,
-            "text": event.text or "",
-            "type": "music",
-            "tags": {
-                "color": "\\c&HFFFFFF&\\alpha&H1A&",
-                "font": f"\\fn{CWI_FONT_FAMILY}",
+    def _build_sfx_line(self, event: CaptionEvent) -> list[dict]:
+        """Build an SFX dialogue line (white text with brackets, no color animation)."""
+        return [
+            self._build_box_line(
+                event.start, event.end, event.text or "", [], event.id
+            ),
+            {
+                "start": event.start,
+                "end": event.end,
+                "text": event.text or "",
+                "type": "sfx",
+                "tags": {
+                    "color": "\\c&HFFFFFF&\\alpha&H1A&",
+                    "font": f"\\fn{CWI_FONT_FAMILY}",
+                },
+                "layer": 1,
+                "style": "Default",
             },
-        }
+        ]
+
+    def _build_music_line(self, event: CaptionEvent) -> list[dict]:
+        """Build a music dialogue line (white text with music symbol, no word animation)."""
+        return [
+            self._build_box_line(
+                event.start, event.end, event.text or "", [], event.id
+            ),
+            {
+                "start": event.start,
+                "end": event.end,
+                "text": event.text or "",
+                "type": "music",
+                "tags": {
+                    "color": "\\c&HFFFFFF&\\alpha&H1A&",
+                    "font": f"\\fn{CWI_FONT_FAMILY}",
+                },
+                "layer": 1,
+                "style": "Default",
+            },
+        ]
 
     # ─── ASS post-processing ──────────────────────────────────────
 
@@ -690,6 +756,8 @@ class CwiRenderer:
                 # The text is everything after the 9th comma (index 9)
                 parts = line.split(",", 9)
                 if len(parts) == 10:
+                    parts[0] = f"Dialogue: {evt.get('layer', 0)}"
+                    parts[3] = evt.get("style", "Default")
                     text = parts[9]
 
                     span_tags = evt.get("span_tags")
@@ -744,7 +812,7 @@ class CwiRenderer:
         base_fs = max(
             1, round(screen_height * DEFAULT_BASELINE_SIZE_PCT / 100.0)
         )
-        box_padding = max(8, round(base_fs * 0.45))
+        box_padding = max(6, round(base_fs * 0.3))
 
         font_name = CWI_FONT_FAMILY
         embed_font = bool(self.font_path and self.font_path.exists())
@@ -755,6 +823,25 @@ class CwiRenderer:
             f"Style: Default,{font_name},"
             f"{base_fs},"
             "&H00FFFFFF,"        # PrimaryColour (solid white)
+            "&H00FFFFFF,"        # SecondaryColour
+            "&H00000000,"        # OutlineColour
+            f"{BLACK_90_PCT},"   # BackColour (unused at BorderStyle=1)
+            "0,0,0,0,"           # Bold, Italic, Underline, StrikeOut
+            "100,100,0,0,"       # ScaleX, ScaleY, Spacing, Angle
+            "1,0,0,2,"           # BorderStyle=1 (no box on the text layer),
+                                 # Outline=0, Shadow=0, Alignment=2 (bottom center)
+            f"{work_area['margin_left']},{work_area['margin_right']},"
+            f"{screen_height - work_area['box_y']},"  # MarginV (from bottom)
+            "1"                  # Encoding
+        )
+
+        # Box layer style: near-invisible text (alpha FE) so libass still
+        # draws the BorderStyle=3 box, as ONE continuous 90% black box
+        # hugging the line (spec section 2.4.1).
+        cwi_box_style = (
+            f"Style: CwiBox,{font_name},"
+            f"{base_fs},"
+            "&HFEFFFFFF,"        # PrimaryColour (near-invisible text)
             "&H00FFFFFF,"        # SecondaryColour
             "&H00000000,"        # OutlineColour
             f"{BLACK_90_PCT},"   # BackColour (90% black caption box)
@@ -774,6 +861,7 @@ class CwiRenderer:
         for line in ass_content.split("\n"):
             if line.startswith("Style: Default"):
                 result.append(cwi_style)
+                result.append(cwi_box_style)
             elif line.startswith("PlayResX:"):
                 result.append(f"PlayResX: {screen_width}")
             elif line.startswith("PlayResY:"):

@@ -138,4 +138,5 @@ def test_word_timeline_drives_renderer(pipeline, tmp_path):
     assert "Hello" in ass
     assert "Goodbye" in ass
     # Per-word overlay line for 'world' starts at its precise onset
-    assert "Dialogue: 0,0:00:00.40," in ass
+    # (text layer = 1; layer 0 is the caption-box companion)
+    assert "Dialogue: 1,0:00:00.40," in ass
