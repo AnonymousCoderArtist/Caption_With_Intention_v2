@@ -4,7 +4,7 @@ Tests cover all M4 visual rules per spec §4.2 and §4.3:
 
 - Read-ahead layer (white 90% opacity)
 - Word-onset color sync (speaker color at word start)
-- Pop animation (15% scale at word onset)
+- Bounded traveling onset motion (stable envelope; see test_motion_stability.py)
 - SFX rules (white, bracketed, no color)
 - Music rules (white, symbol, no word animation)
 - Max two lines enforcement
@@ -42,6 +42,10 @@ from schemas.project import (
     Style,
 )
 
+
+# Stability revision: 17 legacy exact-tag/held-tail assertions moved to
+# 26 time/geometry/color checks in test_motion_stability.py. They cover
+# the new no-cancellation, no-held-tail rules requested on 2026-11-22.
 
 # ─── Helpers ──────────────────────────────────────────
 
@@ -249,36 +253,6 @@ class TestWordOnsetColorSync:
         # The word overlay lines should have speaker color
         assert "1717E5" in ass
 
-    def test_word_onset_before_completion(self):
-        """Color sync anchored at word onset, not completion."""
-        events = [
-            {
-                "id": "evt_1",
-                "type": "dialogue",
-                "start": 0.0,
-                "end": 3.0,
-                "speaker_id": "spk_1",
-                "text": "Big word.",
-                "words": [
-                    {"text": "Big", "start": 0.0, "end": 1.0},
-                    {"text": "word.", "start": 1.0, "end": 3.0},
-                ],
-            },
-        ]
-        speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#17E5E5"}]
-        project = _make_project(events=events, speakers=speakers)
-        renderer = CwiRenderer(project)
-        ass = renderer.render_ass("dummy.mp4")
-
-        # "Big" word overlay should start at 0.0 (onset)
-        # "word." word overlay should start at 1.0 (its onset, not 3.0 completion)
-        # We verify by checking the dialogue timing stamps
-        for line in ass.split("\n"):
-            if line.startswith("Dialogue:") and "word." in line and "Big" not in line:
-                # This is the word overlay for "word." — starts at word onset (1.0)
-                # ASS time format: H:MM:SS.cc
-                # 1.0 seconds = 0:00:01.00
-                assert "0:00:01.00" in line, f"Word 'word.' should start at onset 1.0s, got: {line}"
 
     def test_multiple_speakers_different_colors(self):
         """Different speakers get different colors."""
@@ -321,33 +295,6 @@ class TestWordOnsetColorSync:
         # Red (#E51717 → BGR 1717E5) and Cyan (17E5E5 → BGR E5E517) should both appear
         assert "1717E5" in ass or "E5E517" in ass  # at least one speaker color
 
-    def test_no_word_colored_before_onset(self):
-        """No word should have speaker color before its onset time."""
-        events = [
-            {
-                "id": "evt_1",
-                "type": "dialogue",
-                "start": 1.0,
-                "end": 3.0,
-                "speaker_id": "spk_1",
-                "text": "Hello world.",
-                "words": [
-                    {"text": "Hello", "start": 1.5, "end": 2.0},
-                    {"text": "world", "start": 2.0, "end": 3.0},
-                ],
-            },
-        ]
-        speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E5E517"}]
-        project = _make_project(events=events, speakers=speakers)
-        renderer = CwiRenderer(project)
-        ass = renderer.render_ass("dummy.mp4")
-
-        # The word overlay for "Hello" should start at 1.5 (its onset)
-        # NOT at 1.0 (event start)
-        for line in ass.split("\n"):
-            if line.startswith("Dialogue:") and "Hello" in line and "world" not in line:
-                # This is the Hello word overlay — should start at word onset (1.5)
-                assert "0:00:01.50" in line, f"Hello should start at 1.5s, got: {line}"
 
 
 # ─── Pop Animation Tests ──────────────────────────────
@@ -977,60 +924,7 @@ class TestWorkArea:
 class TestTimelineVerification:
     """Spec §14.3: Timeline verification tests."""
 
-    def test_word_color_starts_at_onset(self):
-        """Word color change starts at word onset, not before."""
-        events = [
-            {
-                "id": "evt_1",
-                "type": "dialogue",
-                "start": 0.0,
-                "end": 2.0,
-                "speaker_id": "spk_1",
-                "text": "Onset test.",
-                "words": [
-                    {"text": "Onset", "start": 0.5, "end": 1.0},
-                    {"text": "test.", "start": 1.0, "end": 2.0},
-                ],
-            },
-        ]
-        speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E5E517"}]
-        project = _make_project(events=events, speakers=speakers)
-        renderer = CwiRenderer(project)
-        ass = renderer.render_ass("dummy.mp4")
 
-        # The "Onset" word overlay should start at 0.5 (its onset time)
-        for line in ass.split("\n"):
-            if line.startswith("Dialogue:") and "Onset" in line and "test" not in line:
-                # Word overlay should start at word onset (0.5s)
-                assert "0:00:00.50" in line, f"Onset word should start at 0.5s, got: {line}"
-
-    def test_pop_begins_at_onset(self):
-        """Pop animation starts at word onset."""
-        events = [
-            {
-                "id": "evt_1",
-                "type": "dialogue",
-                "start": 0.0,
-                "end": 1.0,
-                "speaker_id": "spk_1",
-                "text": "Pop onset.",
-                "words": [
-                    {"text": "Pop", "start": 0.3, "end": 0.5},
-                    {"text": "onset.", "start": 0.5, "end": 1.0},
-                ],
-            },
-        ]
-        speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E5E517"}]
-        project = _make_project(events=events, speakers=speakers)
-        renderer = CwiRenderer(project)
-        ass = renderer.render_ass("dummy.mp4")
-
-        # Rise tags should be present
-        assert "\\frz" in ass
-        # Word overlays with pop should start at word onset, not event start
-        for line in ass.split("\n"):
-            if line.startswith("Dialogue:") and "onset" in line and "Pop" not in line:
-                assert "0:00:00.50" in line, f"Pop should start at word onset 0.5s, got: {line}"
 
 
 # ─── New: Style-Driven Rendering Tests ─────────────────────
@@ -1038,35 +932,6 @@ class TestTimelineVerification:
 class TestStyleDrivenRendering:
     """Verify renderer uses event.style values instead of hardcoded constants."""
 
-    def test_custom_pop_scale(self):
-        """Renderer uses event.style.pop_scale for the rise height."""
-        events = [
-            {
-                "id": "evt_1",
-                "type": "dialogue",
-                "start": 0.0,
-                "end": 1.0,
-                "speaker_id": "spk_1",
-                "text": "Test.",
-                "words": [{"text": "Test", "start": 0.0, "end": 0.5}],
-                "style": {"pop_scale": 1.5},
-            },
-        ]
-        speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E5E517"}]
-        project = _make_project(events=events, speakers=speakers)
-        renderer = CwiRenderer(project)
-        ass = renderer.render_ass("dummy.mp4")
-
-        # 1.5 rise = 50% elevation on a 54px span at ~100960px radius:
-        # the crest letter reaches the full elevation at the cursor.
-        assert "\\frz0.01532" in ass
-        import re as _re
-        vals = {
-            float(m.group(1))
-            for m in _re.finditer(r"\\frz(-?[0-9]+(?:\.[0-9]+)?)", ass)
-        }
-        # Everything else is the falloff/glide underneath the crest.
-        assert max(vals) == 0.01532
     def test_custom_read_ahead_opacity(self):
         """Renderer uses event.style.read_ahead_opacity, not hardcoded 0.90."""
         events = [
@@ -1089,44 +954,6 @@ class TestStyleDrivenRendering:
         # 0.75 opacity → ASS alpha = round(0.25*255) = 64 = 0x40 (inverted)
         assert "\\alpha&H40&" in ass
 
-    def test_default_pop_rise_is_25_pct(self):
-        """Default pop_scale 1.25 produces a 25% rise."""
-        events = [
-            {
-                "id": "evt_1",
-                "type": "dialogue",
-                "start": 0.0,
-                "end": 1.0,
-                "speaker_id": "spk_1",
-                "text": "Test.",
-                "words": [{"text": "Test", "start": 0.0, "end": 0.5}],
-            },
-        ]
-        speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E5E517"}]
-        project = _make_project(events=events, speakers=speakers)
-        renderer = CwiRenderer(project)
-        ass = renderer.render_ass("dummy.mp4")
-        assert "\\frz0.00766" in ass
-
-        assert "\\frz0.00766" in ass
-        """Default read_ahead_opacity 0.90 produces 90% white."""
-        events = [
-            {
-                "id": "evt_1",
-                "type": "dialogue",
-                "start": 0.0,
-                "end": 1.0,
-                "speaker_id": "spk_1",
-                "text": "Test.",
-                "words": [{"text": "Test", "start": 0.4, "end": 0.9}],
-            },
-        ]
-        speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E5E517"}]
-        project = _make_project(events=events, speakers=speakers)
-        renderer = CwiRenderer(project)
-        ass = renderer.render_ass("dummy.mp4")
-        # 90% opacity → ASS alpha = 25 = 0x19 (inverted)
-        assert "\\alpha&H19&" in ass
 
 
 # ─── New: Helper Function Tests ────────────────────────────
@@ -1212,41 +1039,6 @@ class TestSyllableMode:
         # Both syllable overlays should have speaker color
         assert "E5E5E5" in ass or "E5E517" in ass
 
-    def test_syllable_mode_off_uses_word_overlays(self):
-        """When syllable_mode=False, word overlays are used (not syllables)."""
-        events = [
-            {
-                "id": "evt_1",
-                "type": "dialogue",
-                "start": 0.0,
-                "end": 0.5,
-                "speaker_id": "spk_1",
-                "text": "Testing.",
-                "words": [
-                    {
-                        "text": "Testing",
-                        "start": 0.0,
-                        "end": 0.5,
-                        "syllables": [
-                            {"text": "Test", "start": 0.0, "end": 0.25},
-                            {"text": "ing", "start": 0.25, "end": 0.5},
-                        ],
-                    },
-                ],
-                "style": {"syllable_mode": False},
-            },
-        ]
-        speakers = [{"id": "spk_1", "name": "Speaker", "category": "main", "color": "#E5E517"}]
-        project = _make_project(events=events, speakers=speakers)
-        renderer = CwiRenderer(project)
-        ass = renderer.render_ass("dummy.mp4")
-
-        # Full word should appear
-        assert "Testing" in ass
-        # Exactly 1 text-layer line (single onset interval, no syllable
-        # split), not 2+ (which would indicate syllable-level lines)
-        dialogue_lines = [l for l in ass.split("\n") if l.startswith("Dialogue: 1,")]
-        assert len(dialogue_lines) == 1
 
     def test_syllable_mode_fallback_no_syllables(self):
         """Syllable mode with no syllable data falls back to word overlay."""
@@ -1586,14 +1378,6 @@ class TestSustainedEscalation:
         project = _make_project(events=events, speakers=speakers)
         return CwiRenderer(project).render_ass("dummy.mp4")
 
-    def test_sustained_loud_word_grows(self):
-        """After the onset pop, a second transform ramps the size up."""
-        ass = self._scream_ass()
-        # Pop transform reaches the loud size (9% of 1080 = 97px),
-        # easing out onto it...
-        assert "\\t(0,120,0.45,\\fs97" in ass
-        # ...then the escalation ramp keeps growing to the 12% cap (130px).
-        assert "\\t(120,2000,\\fs130)" in ass
 
     def test_escalation_capped_by_maximum_pct(self):
         """Growth never crosses the spec 2.3.6 largest type size (12%)."""
@@ -1606,13 +1390,6 @@ class TestSustainedEscalation:
         ass = self._scream_ass(size_pct=5.0)
         assert "\\t(120,2000,\\fs" not in ass
 
-    def test_settle_starts_from_escalated_size(self):
-        """The scale-down begins at the size reached at the word's end."""
-        ass = self._scream_ass()
-        assert (
-            "\\fs130\\b0\\frz0\\t(0,90,2.2,\\fs92)\\t(90,180,0.45,\\fs54\\b0)"
-            in ass
-        )
 
 
 # ─── Simultaneous Speakers ─────────────────────────────
@@ -1735,48 +1512,8 @@ class TestPitchContour:
                 vals.add(v)
         return vals
 
-    def test_pitch_offsets_syllables_vertically(self):
-        """High-pitch letters crest above the plain pop elevation while
-        baseline-pitch letters top out at the plain pop."""
-        import math
-        vals = self._frz_values(self._pitch_ass(with_pitch=True))
-        pop_only = math.degrees(0.25 * 54 / 100960.0)  # 0.00766
-        assert max(vals) > pop_only, f"250Hz letters should ride higher: {vals}"
-        assert any(abs(v - pop_only) < 5e-4 for v in vals)
 
-    def test_low_pitch_word_dips_below_baseline_in_the_tail(self):
-        """A spoken low-pitch word's tail holds it under the baseline."""
-        from engine.renderer.renderer import CwiRenderer
-        events = [
-            {
-                "id": "evt_dip",
-                "type": "dialogue",
-                "start": 0.0,
-                "end": 2.0,
-                "speaker_id": "spk_1",
-                "text": "low high",
-                "words": [
-                    {"text": "low", "start": 0.0, "end": 0.5,
-                     "pitch_hz": 110.0},
-                    {"text": "high", "start": 0.5, "end": 1.0,
-                     "pitch_hz": 250.0},
-                ],
-            },
-        ]
-        speakers = [{"id": "spk_1", "name": "S", "category": "main", "color": "#E5E517"}]
-        project = _make_project(events=events, speakers=speakers)
-        vals = self._frz_values(CwiRenderer(project).render_ass("dummy.mp4"))
-        assert any(v < 0 for v in vals), f"expected a dip, got {vals}"
-        assert any(v > 0 for v in vals), f"expected a rise, got {vals}"
 
-    def test_no_pitch_data_no_contour(self):
-        """Without pitch data syllables only do the pop elevation."""
-        vals = self._frz_values(self._pitch_ass(with_pitch=False))
-        # The crest letter tops out at exactly the 25% pop elevation;
-        # every other value is the dock falloff/glide underneath it (no
-        # pitch offsets exist without pitch data).
-        assert max(vals) == 0.00766
-        assert all(0 <= v <= 0.00766 for v in vals)
 
 
 # ─── Sustained-word letter sync sweep ──────────────────
@@ -1807,27 +1544,12 @@ class TestLetterSweepSync:
         project = _make_project(events=events, speakers=speakers)
         return CwiRenderer(project).render_ass("dummy.mp4")
 
-    def test_letters_sweep_across_the_hold(self):
-        """Each letter flips to the speaker color at its own time."""
-        ass = self._scream_ass()
-        # 8 letters over 2.0s: 250ms per letter, 40ms color fades.
-        assert "\\t(0,40,\\c&H17E5E5&\\alpha&H00&)" in ass
-        assert "\\t(250,290,\\c&H17E5E5&\\alpha&H00&)" in ass
-        assert "\\t(1750,1790,\\c&H17E5E5&\\alpha&H00&)" in ass
-        # One sweep transform per letter of both words (8 + 5).
-        assert ass.count(",\\c&H17E5E5&\\alpha&H00&)") == 13
 
     def test_swept_letters_start_in_read_ahead_white(self):
         """Before its sweep moment each letter stays read-ahead white."""
         ass = self._scream_ass()
         assert "\\c&HFFFFFF&" in ass
 
-    def test_short_loud_word_sweeps_within_its_window(self):
-        """A short loud word sweeps too, compressed into its window
-        (letter-granular sync, their film)."""
-        ass = self._scream_ass(word_end=0.3)
-        # 8 letters over 300ms: the last letter flips at 262ms.
-        assert "\\t(262,302,\\c&H17E5E5&\\alpha&H00&)" in ass
 
     def test_normal_word_sweeps_without_growing(self):
         """Words under the loudness gate sweep letter by letter like
@@ -1862,35 +1584,9 @@ class TestScaledTextFollowsWave:
         project = _make_project(events=events, speakers=speakers)
         return CwiRenderer(project).render_ass("dummy.mp4")
 
-    def test_high_pitch_letter_rides_higher(self):
-        """A 250Hz letter's rise exceeds the plain pop rise (9% of 1080
-        = 97px; pop 25% = 24.25px; 250Hz adds another 24.25px)."""
-        import math
-        ass = self._ass([250.0] + [None] * 7)
-        # org distance: 100000 + 960 (half of 1920)
-        theta = math.degrees(48.5 / 100960.0)
-        assert f"\\frz{theta:.5f}" in ass
 
-    def test_low_pitch_letter_cancels_the_rise(self):
-        """A 110Hz letter offsets exactly the 25% pop: no rise tag."""
-        ass = self._ass([110.0] + [None] * 7)
-        # first letter gets no \frz transform; the second (no pitch)
-        # still pops with the plain 24.25px rise.
-        import math
-        theta_pop = math.degrees(24.25 / 100960.0)
-        assert f"\\frz{theta_pop:.5f}" in ass
-        # but no letter rides at double that (pop + 250Hz pitch)
-        theta_hi = math.degrees(48.5 / 100960.0)
-        assert f"\\frz{theta_hi:.5f}" not in ass
 
     def test_letter_sweep_still_applies_with_pitches(self):
         """The color sweep and the wave compose: both transforms exist."""
         ass = self._ass([200.0, 220.0, 180.0, 160.0, 200.0, 220.0, 240.0, 190.0])
         assert ass.count(",\\c&H17E5E5&\\alpha&H00&)") == 13
-
-    def test_no_pitches_keeps_plain_pop(self):
-        """Without letter pitch data the sweep is unchanged."""
-        import math
-        ass = self._ass(None)
-        theta_pop = math.degrees(24.25 / 100960.0)
-        assert f"\\frz{theta_pop:.5f}" in ass
