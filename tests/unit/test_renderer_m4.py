@@ -491,9 +491,12 @@ class TestSFXRules:
         renderer = CwiRenderer(project)
         ass = renderer.render_ass("dummy.mp4")
 
-        # SFX should be a single text-layer line (plus its box companion)
-        sfx_lines = [l for l in ass.split("\n") if l.startswith("Dialogue: 1,") and "[SFX]" in l]
+        # SFX should be a single text-layer line (plus its box companion).
+        # Text sits at layer 3 (above dialogue), its box at layer 2.
+        sfx_lines = [l for l in ass.split("\n") if l.startswith("Dialogue: 3,") and "[SFX]" in l]
         assert len(sfx_lines) == 1, f"SFX should be one line, got: {len(sfx_lines)}"
+        box_lines = [l for l in ass.split("\n") if l.startswith("Dialogue: 2,") and "[SFX]" in l]
+        assert len(box_lines) == 1, f"SFX box should be one line, got: {len(box_lines)}"
 
 
 class TestCaptionBox:
@@ -551,6 +554,47 @@ class TestCaptionBox:
 
 
 # ─── Music Rules Tests ────────────────────────────────
+
+    def test_sfx_takes_maker_character_color(self):
+        """Launch film: SFX made by a character takes their color ([GASP] pink)."""
+        events = [
+            {
+                "type": "sound_effect",
+                "start": 0.0,
+                "end": 1.0,
+                "speaker_id": "spk_1",
+                "text": "[GASP]",
+            },
+        ]
+        speakers = [
+            {"id": "spk_1", "name": "Slinky", "color": "#E51030"},
+        ]
+        project = _make_project(events=events, speakers=speakers)
+        renderer = CwiRenderer(project)
+        ass = renderer.render_ass("dummy.mp4")
+        sfx_lines = [l for l in ass.split("\n") if l.startswith("Dialogue: 3,") and "[GASP]" in l]
+        assert len(sfx_lines) == 1
+        # #E51030 in ASS BGR order
+        assert "&H3010E5" in sfx_lines[0], sfx_lines[0]
+
+    def test_sfx_unattributed_stays_white(self):
+        """SFX with no speaker stays white."""
+        events = [
+            {
+                "type": "sound_effect",
+                "start": 0.0,
+                "end": 1.0,
+                "speaker_id": None,
+                "text": "[CRASH]",
+            },
+        ]
+        project = _make_project(events=events)
+        renderer = CwiRenderer(project)
+        ass = renderer.render_ass("dummy.mp4")
+        sfx_lines = [l for l in ass.split("\n") if l.startswith("Dialogue: 3,") and "[CRASH]" in l]
+        assert len(sfx_lines) == 1
+        assert "&HFFFFFF" in sfx_lines[0], sfx_lines[0]
+
 
 class TestMusicRules:
     """Spec §5.5: Music — white, symbol treatment, no word animation."""
@@ -610,8 +654,9 @@ class TestMusicRules:
         renderer = CwiRenderer(project)
         ass = renderer.render_ass("dummy.mp4")
 
-        # Music should be a single text-layer line (plus its box companion)
-        music_lines = [l for l in ass.split("\n") if l.startswith("Dialogue: 1,") and "synth" in l]
+        # Music should be a single text-layer line (plus its box companion),
+        # stacked above dialogue like SFX (text layer 3, box layer 2).
+        music_lines = [l for l in ass.split("\n") if l.startswith("Dialogue: 3,") and "synth" in l]
         assert len(music_lines) == 1, f"Music should be one line, got: {len(music_lines)}"
 
 
@@ -667,9 +712,18 @@ class TestMaxTwoLines:
         project = _make_project(events=events, speakers=speakers)
         renderer = CwiRenderer(project)
         ass = renderer.render_ass("dummy.mp4")
-        # All text should be present (inline tags stripped)
+        # Spec 2.4.2: a caption wider than the work area splits into two
+        # stacked caption lines, each with its own box.
         cleaned = re.sub(r"\{[^}]*\}", "", ass)
-        assert long_text in cleaned
+        assert "This is a very long caption that might need two lines in the" in cleaned
+        assert "caption box at the bottom of the screen" in cleaned
+        # Upper line stacked above the lower one via a larger MarginV.
+        margin_vs = {
+            int(line.split(",")[7])
+            for line in ass.split("\n")
+            if line.startswith("Dialogue:")
+        }
+        assert len(margin_vs) > 1
 
 
 # ─── Dynamic Box Sizing ───────────────────────────────
@@ -1271,6 +1325,51 @@ class TestRendererValidation:
         assert len(content) > 0
         assert "[Events]" in content
 
+
+class TestBoxScalesHorizontallyOnly:
+    """User rule (2026-11-22): the box never grows vertically; it only
+    scales horizontally to fit loud words. Box spans keep each word's
+    \\fs/\\fscx (width) but compress height back to baseline via \\fscy."""
+
+    def test_box_spans_follow_word_sizes(self):
+        from engine.renderer.renderer import CwiRenderer
+        events = [
+            {
+                "id": "evt_1",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 1.0,
+                "speaker_id": "spk_1",
+                "text": "this SHOUTS loudly",
+                "words": [
+                    {"text": "this", "start": 0.0, "end": 0.3, "size_pct": 5.0},
+                    {"text": "SHOUTS", "start": 0.3, "end": 0.7, "size_pct": 9.0},
+                    {"text": "loudly", "start": 0.7, "end": 1.0, "size_pct": 4.0},
+                ],
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "S", "category": "main", "color": "#E5E517"}]
+        project = _make_project(events=events, speakers=speakers)
+        ass = CwiRenderer(project).render_ass("dummy.mp4")
+        import re as _re
+        for line in ass.split("\n"):
+            if line.startswith("Dialogue:") and ",CwiBox," in line:
+                sizes = set(_re.findall(r"\\fs(\d+)", line))
+                # every box span renders at the baseline size (constant
+                # box height)...
+                assert sizes == {"54"}, f"box spans must all be baseline size, got {sizes}"
+        # ...and while the loud word is spoken, its box section widens
+        # via letter spacing so the box still covers its full width
+        box_lines = [
+            l for l in ass.split("\n")
+            if l.startswith("Dialogue:") and ",CwiBox," in l
+        ]
+        assert any(
+            "\\fsp" in s
+            for line in box_lines
+            for s in line.split("{")
+            if "SHOUTS" in s
+        )
 
 class TestSfxAnimation:
     """Spec 2.4.4: SFX stay white + bracketed but follow animation rules."""

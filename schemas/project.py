@@ -61,7 +61,7 @@ class Style(BaseModel):
     color_transition_duration: Optional[float] = None
     pop_duration: Optional[float] = None
     pop_easing: str = "smooth"
-    syllable_mode: bool = False
+    syllable_mode: bool = True
     box_opacity: float = 0.90
     box_padding: int = 10
     breakout_permission: bool = False
