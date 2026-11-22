@@ -72,6 +72,28 @@ _MARK_CLOSE = ""
 # Pop animation timing (ms), per spec section 2.2.3: grow 15%, then return.
 POP_IN_MS = 120
 POP_OUT_MS = 180
+# Mid-word pitch contour (launch film: syllables ride the voice pitch).
+# A syllable carrying pitch_hz is offset vertically around the
+# 160-200Hz speech baseline (spec section 2.3.8), by up to
+# PITCH_RISE_MAX of its type height at the span edges.
+PITCH_BASELINE_HZ = 180.0
+PITCH_SPAN_HZ = 70.0
+PITCH_RISE_MAX = 0.25
+# Sustained loud words (escalation gate, launch film WHOOOOOA): the
+# sync keeps sweeping through the word while it is held scaled up
+# (user rule 2026-11-22: "the synchronisation of scaled up word
+# should also continue"). Letters color in one by one across the
+# spoken window so the coloring always tracks the sound's progress.
+LETTER_SWEEP_FADE_MS = 40
+LETTER_SWEEP_MIN_PER_LETTER_S = 0.06
+
+
+def _pitch_offset_px(pitch_hz: float, size_px: int) -> float:
+    """Vertical pixel offset for a pitch, relative to the baseline."""
+    rel = max(-1.0, min(1.0, (pitch_hz - PITCH_BASELINE_HZ) / PITCH_SPAN_HZ))
+    return rel * PITCH_RISE_MAX * size_px
+
+
 # Spec section 2.4.1: very loud or sudden bursts of speech may break out
 # of the captions box. Threshold: a word at or above this type size (% of
 # screen height) renders WITHOUT the box.
@@ -364,6 +386,9 @@ class CwiRenderer:
                 # any moment, so colored words never double with white.
                 # Spec 2.4.2: a caption too wide for the work area splits
                 # into two stacked caption lines, each with its own box.
+                sim_lift = self._simultaneous_dialogue_lift(
+                    event, screen_width, screen_height
+                )
                 for child, extra in self._split_event_lines(
                     event, screen_width, screen_height
                 ):
@@ -377,7 +402,7 @@ class CwiRenderer:
                                 "synchronization_color_layer_on_off", True
                             ),
                             screen_width=screen_width,
-                            margin_v_extra=extra,
+                            margin_v_extra=extra + sim_lift,
                         )
                     )
 
@@ -454,7 +479,9 @@ class CwiRenderer:
             tags += f"\\fscx{span['width']}"
         return tags
 
-    def _box_geometry_tags(self, span: dict, base_fs: int) -> str:
+    def _box_geometry_tags(
+        self, span: dict, base_fs: int, size_px: int = 0
+    ) -> str:
         """ASS tags for a box-companion span: constant baseline HEIGHT,
         horizontally matching the word it backs (user rule 2026-11-22:
         the box never grows vertically, it scales horizontally to fit
@@ -463,10 +490,12 @@ class CwiRenderer:
         The box span renders at baseline \\fs (constant height) and
         widens with \\fsp letter-spacing so it still covers the full
         word width. (\\fscy was rejected: this libass also shrinks the
-        box horizontally with it.)
+        box horizontally with it.) size_px overrides the word's loud
+        size (escalation).
         """
         width = span["width"]
-        text_w = self._estimate_span_width(span["text"], span["size_px"], width)
+        size = size_px if size_px > 0 else span["size_px"]
+        text_w = self._estimate_span_width(span["text"], size, width)
         box_w = self._estimate_span_width(span["text"], base_fs, width)
         fsp = max(0.0, (text_w - box_w) / max(1, len(span["text"])))
         # \\fscx scales the spacing along with the glyphs; compensate.
@@ -485,26 +514,43 @@ class CwiRenderer:
         base_fs: int,
         duration_ms: float,
         first_of_word: bool = True,
+        grow_from: int = 0,
+        grow_to: int = 0,
+        grow_ms: int = 0,
     ) -> str:
         """Scale-up transform from baseline to the word's intonation
         geometry at the spoken moment (loud-word pulse, user rule
         2026-11-22). On later syllable intervals of the same word the
-        word is already big, so the geometry is static."""
-        loud = f"\\fs{span['size_px']}{span['bold']}"
-        if span["width"] != 100:
-            loud += f"\\fscx{span['width']}"
+        word is already big, so the geometry is static.
+
+        Sustained-loud escalation (launch film WHOOOOOA): when the
+        word keeps growing while held, grow_from/grow_to carry the
+        escalated type sizes at this interval's start and at the
+        word's end and the ramp continues over grow_ms.
+        """
+        width_tag = f"\\fscx{span['width']}" if span["width"] != 100 else ""
         if not first_of_word:
+            start_fs = grow_from if grow_from > 0 else span["size_px"]
+            loud = f"\\fs{start_fs}{span['bold']}{width_tag}"
+            if grow_to > start_fs and grow_ms > 0:
+                return f"{loud}\\frz0\\t(0,{grow_ms},\\fs{grow_to})"
             return loud + "\\frz0"
+        loud = f"\\fs{span['size_px']}{span['bold']}{width_tag}"
         t1 = int(min(POP_IN_MS, max(1.0, duration_ms / 2)))
-        return f"\\fs{base_fs}\\b0\\frz0\\t(0,{t1},{loud})"
+        tags = f"\\fs{base_fs}\\b0\\frz0\\t(0,{t1},{loud})"
+        if grow_to > span["size_px"] and grow_ms > t1:
+            tags += f"\\t({t1},{grow_ms},\\fs{grow_to})"
+        return tags
 
     def _pulse_down_tags(
-        self, span: dict, base_fs: int, duration_ms: float
+        self, span: dict, base_fs: int, duration_ms: float, from_size: int = 0
     ) -> str:
         """Scale-down transform back to baseline geometry right after
         the word's spoken window (user rule: the loud word comes back
-        to its original position/size after it is spoken)."""
-        loud = f"\\fs{span['size_px']}{span['bold']}\\frz0"
+        to its original position/size after it is spoken). from_size
+        is the escalated type size reached at the word's end."""
+        size = from_size if from_size > 0 else span["size_px"]
+        loud = f"\\fs{size}{span['bold']}\\frz0"
         if span["width"] != 100:
             loud += f"\\fscx{span['width']}"
         settle = f"\\fs{base_fs}\\b0"
@@ -514,12 +560,14 @@ class CwiRenderer:
         return f"{loud}\\t(0,{t2},{settle})"
 
     def _pulse_down_box_tags(
-        self, span: dict, base_fs: int, duration_ms: float
+        self, span: dict, base_fs: int, duration_ms: float, from_size: int = 0
     ) -> str:
         """Box narrowing transform after a loud word's window (the box
-        widened with \\fsp while the word was big)."""
+        widened with \\fsp while the word was big). from_size is the
+        escalated type size the box currently covers."""
         width = span["width"]
-        text_w = self._estimate_span_width(span["text"], span["size_px"], width)
+        size = from_size if from_size > 0 else span["size_px"]
+        text_w = self._estimate_span_width(span["text"], size, width)
         box_w = self._estimate_span_width(span["text"], base_fs, width)
         fsp = (text_w - box_w) / max(1, len(span["text"]))
         if width != 100:
@@ -536,6 +584,7 @@ class CwiRenderer:
         duration_ms: float,
         org_y: int,
         org_distance: float,
+        pitch_hz: Optional[float] = None,
     ) -> str:
         """Rise animation tags for the word/syllable at its onset.
 
@@ -553,12 +602,16 @@ class CwiRenderer:
         near-horizontal, so the arc is a vertical lift to sub-pixel
         precision and the 0.00X° tilt is imperceptible.
         """
-        if duration_ms <= 0 or pop_scale <= 1.0:
+        elevation_px = (pop_scale - 1.0) * span["size_px"] if pop_scale > 1.0 else 0.0
+        if pitch_hz:
+            # Mid-word pitch contour (launch film): the syllable rides
+            # the voice pitch on top of the pop elevation.
+            elevation_px += _pitch_offset_px(pitch_hz, span["size_px"])
+        if duration_ms <= 0 or abs(elevation_px) < 0.5:
             return ""
         t1 = int(min(POP_IN_MS, duration_ms / 2))
         if t1 <= 0:
             return ""
-        elevation_px = (pop_scale - 1.0) * span["size_px"]
         theta_deg = math.degrees(elevation_px / org_distance)
         # org sits a fixed 100000px left of the line start; org_distance
         # (100000 + half screen width) approximates the span radius.
@@ -588,6 +641,22 @@ class CwiRenderer:
             f"\\frz{theta_deg:.5f}"
             f"\\t(0,{t2},\\frz0)"
         )
+
+    def _pitch_hold_tags(
+        self,
+        span: dict,
+        pitch_hz: float,
+        org_y: int,
+        org_distance: float,
+    ) -> str:
+        """Static pitch-contour offset for an already-spoken syllable of
+        the current word (launch film: syllables hold the voice pitch
+        mid-word). Empty when the pitch sits on the baseline."""
+        offset_px = _pitch_offset_px(pitch_hz, span["size_px"])
+        if abs(offset_px) < 0.5:
+            return ""
+        theta_deg = math.degrees(offset_px / org_distance)
+        return f"\\org(-100000,{org_y})\\frz{theta_deg:.5f}"
     def _sync_points(self, event: CaptionEvent) -> list[tuple[float, int, Optional[int]]]:
         """Sorted (time, word_index, syllable_index) onset points.
 
@@ -787,6 +856,24 @@ class CwiRenderer:
         def _baseline_geometry() -> str:
             return f"\\fs{box_base_fs}\\b0\\frz0"
 
+        # Sustained-loud escalation (launch film WHOOOOOA: a loud word
+        # keeps growing while it is held). _esc gives a span's type
+        # size at absolute time t; words under the loudness gate never
+        # grow. The spec 2.3.6 maximum caps the growth.
+        esc_rate = event.style.escalation_rate
+        esc_max = event.style.escalation_max
+        esc_gate_px = round(box_base_fs * event.style.escalation_gate)
+        esc_cap_px = max(1, round(screen_height * event.style.maximum_pct / 100.0))
+
+        def _esc(span: dict, t_abs: float) -> int:
+            if span["size_px"] < esc_gate_px:
+                return span["size_px"]
+            offset = t_abs - span["word"].start
+            if offset <= 0:
+                return span["size_px"]
+            mult = min(1.0 + esc_rate * offset, esc_max)
+            return min(esc_cap_px, round(span["size_px"] * mult))
+
         points = self._sync_points(event) if sync_enabled else []
         intervals: list[tuple[float, float, Optional[int], Optional[int]]] = []
         if not points:
@@ -824,11 +911,41 @@ class CwiRenderer:
             box_parts: list[str] = []
             for i, span in enumerate(spans):
                 if not pulsing or i == cur_word:
-                    box_tag = self._box_geometry_tags(span, box_base_fs)
+                    if pulsing and i == cur_word:
+                        # Escalation: the box keeps widening while the
+                        # word grows (launch film WHOOOOOA).
+                        word_end_t = min(end, span["word"].end)
+                        box_from = _esc(span, start)
+                        box_to = _esc(span, word_end_t)
+                        box_tag = self._box_geometry_tags(
+                            span, box_base_fs, size_px=box_from
+                        )
+                        grow_ms = round((word_end_t - start) * 1000.0)
+                        if box_to > box_from and grow_ms > 0:
+                            width = span["width"]
+                            text_w = self._estimate_span_width(
+                                span["text"], box_to, width
+                            )
+                            box_w = self._estimate_span_width(
+                                span["text"], box_base_fs, width
+                            )
+                            fsp_to = max(0.0, (text_w - box_w) / max(1, len(span["text"])))
+                            if width != 100:
+                                fsp_to = fsp_to * 100.0 / width
+                            t1 = int(
+                                min(POP_IN_MS, max(1.0, duration_ms / 2))
+                            ) if cur_syl in (None, 0) else 0
+                            if fsp_to >= 0.5 and grow_ms > t1:
+                                box_tag += f"\\t({t1},{grow_ms},\\fsp{fsp_to:.1f})"
+                    else:
+                        box_tag = self._box_geometry_tags(span, box_base_fs)
                 elif cur_word is not None and i == cur_word - 1:
+                    from_size = _esc(span, span["word"].end)
                     box_tag = self._box_geometry_tags(
-                        span, box_base_fs
-                    ) + self._pulse_down_box_tags(span, box_base_fs, duration_ms)
+                        span, box_base_fs, size_px=from_size
+                    ) + self._pulse_down_box_tags(
+                        span, box_base_fs, duration_ms, from_size=from_size
+                    )
                 else:
                     box_tag = _baseline_geometry()
                 _emit_span(box_span_tags, box_parts, span["text"], box_tag)
@@ -843,18 +960,25 @@ class CwiRenderer:
                     # word's intonation geometry right at its onset
                     # (user rules 2026-11-22: "pop/scale up when it's
                     # spoken, not from before").
+                    word_end_t = min(end, span["word"].end)
                     geometry = self._pulse_up_tags(
                         span,
                         box_base_fs,
                         duration_ms,
                         first_of_word=cur_syl in (None, 0),
+                        grow_from=_esc(span, start),
+                        grow_to=_esc(span, word_end_t),
+                        grow_ms=round((word_end_t - start) * 1000.0),
                     )
                 elif cur_word is not None and i == cur_word - 1:
                     # Just finished: scale back down to its original
                     # size/weight/width and settle back to the baseline
                     # ("comes back to og position after it's spoken").
                     geometry = self._pulse_down_tags(
-                        span, box_base_fs, duration_ms
+                        span,
+                        box_base_fs,
+                        duration_ms,
+                        from_size=_esc(span, span["word"].end),
                     ) + self._settle_tags(
                         span,
                         event.style.pop_scale,
@@ -879,17 +1003,40 @@ class CwiRenderer:
                         else None
                     )
                     if not syllables:
-                        tag = (
-                            f"\\c{speaker_color}&{geometry}"
-                            + self._pop_tags(
-                                span,
-                                event.style.pop_scale,
-                                duration_ms,
-                                org_y,
-                                org_distance,
-                            )
+                        pop = self._pop_tags(
+                            span,
+                            event.style.pop_scale,
+                            duration_ms,
+                            org_y,
+                            org_distance,
                         )
-                        _emit(span["text"], tag)
+                        # Sustained loud word (launch film WHOOOOOA):
+                        # the sync keeps sweeping letter by letter
+                        # through the scaled-up hold, tracking the
+                        # scream's progress (user rule 2026-11-22).
+                        hold_s = word_end_t - start
+                        letters = span["text"]
+                        if (
+                            hold_s > 0
+                            and span["size_px"] >= esc_gate_px
+                            and hold_s
+                            >= LETTER_SWEEP_MIN_PER_LETTER_S
+                            * max(2, len(letters))
+                        ):
+                            per_ms = hold_s * 1000.0 / len(letters)
+                            for li, ch in enumerate(letters):
+                                t_on = int(li * per_ms)
+                                sweep = (
+                                    f"\\t({t_on},"
+                                    f"{t_on + LETTER_SWEEP_FADE_MS},"
+                                    f"\\c{speaker_color}&\\alpha&H00&)"
+                                )
+                                _emit(ch, white + geometry + pop + sweep)
+                        else:
+                            _emit(
+                                span["text"],
+                                f"\\c{speaker_color}&{geometry}" + pop,
+                            )
                     else:
                         # Syllable variation: color in syllable by syllable,
                         # unspoken syllables stay read-ahead white.
@@ -906,20 +1053,28 @@ class CwiRenderer:
                             if j == len(syllables) - 1:
                                 syl_text += suffix
                             if j < cur_syl:
-                                settle = (
-                                    self._settle_tags(
-                                        span,
-                                        event.style.pop_scale,
-                                        duration_ms,
-                                        org_y,
-                                        org_distance,
+                                pitch = syl.get("pitch_hz")
+                                if pitch:
+                                    # Mid-word pitch contour: spoken
+                                    # syllables hold their pitch offset.
+                                    hold = self._pitch_hold_tags(
+                                        span, pitch, org_y, org_distance
                                     )
-                                    if j == cur_syl - 1
-                                    else ""
-                                )
+                                else:
+                                    hold = (
+                                        self._settle_tags(
+                                            span,
+                                            event.style.pop_scale,
+                                            duration_ms,
+                                            org_y,
+                                            org_distance,
+                                        )
+                                        if j == cur_syl - 1
+                                        else ""
+                                    )
                                 _emit(
                                     syl_text,
-                                    f"\\c{speaker_color}&{geometry}" + settle,
+                                    f"\\c{speaker_color}&{geometry}" + hold,
                                 )
                             elif j == cur_syl:
                                 _emit(
@@ -931,6 +1086,7 @@ class CwiRenderer:
                                         duration_ms,
                                         org_y,
                                         org_distance,
+                                        pitch_hz=syl.get("pitch_hz"),
                                     ),
                                 )
                             else:
@@ -1067,6 +1223,12 @@ class CwiRenderer:
                 continue
             if not (other.start < event.end and other.end > event.start):
                 continue
+            # Simultaneous speakers already stack above each other; the
+            # SFX/music line must clear the whole stack (user rule
+            # 2026-11-22: SFX is always the top line).
+            stack = self._simultaneous_dialogue_lift(
+                other, screen_width, screen_height
+            )
             for child, child_extra in self._split_event_lines(
                 other, screen_width, screen_height
             ):
@@ -1078,9 +1240,59 @@ class CwiRenderer:
                 else:
                     max_sz = base_fs
                 top = max(
-                    top, child_extra + round(max_sz * 1.5) + 2 * box_padding
+                    top,
+                    stack + child_extra + round(max_sz * 1.5) + 2 * box_padding,
                 )
         return top + gap if top else 0
+
+    def _simultaneous_dialogue_lift(
+        self, event: CaptionEvent, screen_width: int, screen_height: int
+    ) -> int:
+        """margin_v offset lifting a dialogue event above EARLIER-starting
+        overlapping dialogue (user rule 2026-11-22: when several
+        characters speak at once, each keeps their own color and the
+        later speaker stacks above the earlier one; the very top line
+        stays reserved for SFX). 0 when nothing overlaps."""
+        base_fs = max(1, round(screen_height * DEFAULT_BASELINE_SIZE_PCT / 100.0))
+        box_padding = max(6, round(base_fs * 0.3))
+        gap = max(2, round(base_fs * 0.12))
+        events_list = list(self.project.events)
+        my_idx = next(
+            (i for i, other in enumerate(events_list) if other is event), 0
+        )
+        lift = 0
+        for idx, other in enumerate(events_list):
+            if other is event:
+                continue
+            other_type = (
+                other.type.value
+                if isinstance(other.type, EventType)
+                else str(other.type)
+            )
+            if other_type != "dialogue":
+                continue
+            if not (other.start < event.end and other.end > event.start):
+                continue
+            # Only speakers who started earlier (project order breaks
+            # ties) push this line up.
+            if other.start > event.start:
+                continue
+            if other.start == event.start and idx > my_idx:
+                continue
+            for child, child_extra in self._split_event_lines(
+                other, screen_width, screen_height
+            ):
+                if child.words:
+                    max_sz = max(
+                        round(screen_height * w.size_pct / 100.0)
+                        for w in child.words
+                    )
+                else:
+                    max_sz = base_fs
+                lift += (
+                    child_extra + round(max_sz * 1.5) + 2 * box_padding + gap
+                )
+        return lift
 
     def _build_sfx_line(
         self,

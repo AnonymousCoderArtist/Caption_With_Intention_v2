@@ -44,6 +44,9 @@ class Word(BaseModel):
     source_timestamp: Optional[float] = None
     manual_override: bool = False
     review_state: ReviewState = ReviewState.pending
+    # Syllable dicts: {"text", "start", "end"} plus optional
+    # "pitch_hz" for the mid-word pitch contour (syllables ride the
+    # voice pitch, launch film; filled by the analysis pipeline).
     syllables: Optional[list[dict]] = None
 
 
@@ -67,6 +70,14 @@ class Style(BaseModel):
     breakout_permission: bool = False
     minimum_pct: float = 3.0
     maximum_pct: float = 12.0
+    # Sustained loud sounds keep growing while held (launch film
+    # WHOOOOOA: ~1.7x over ~0.85s). Rate is extra size per second of
+    # hold as a fraction of the word's loud size, max caps the
+    # multiplier, and gate is the loudness (x baseline type size)
+    # that triggers growth.
+    escalation_rate: float = 0.8
+    escalation_max: float = 1.8
+    escalation_gate: float = 1.3
 
 
 class CaptionEvent(BaseModel):

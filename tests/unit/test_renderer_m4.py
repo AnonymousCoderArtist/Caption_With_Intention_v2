@@ -1548,3 +1548,240 @@ class TestBreakoutException:
         project = _make_project(events=events, speakers=[])
         ass = CwiRenderer(project).render_ass("dummy.mp4")
         assert "CwiBox" in ass
+
+
+# ─── Sustained-Loud Escalation ─────────────────────────
+
+class TestSustainedEscalation:
+    """Launch film WHOOOOOA: a loud word keeps growing while held."""
+
+    def _scream_ass(self, size_pct=9.0, word_end=2.0):
+        from engine.renderer.renderer import CwiRenderer
+        events = [
+            {
+                "id": "evt_scream",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 3.0,
+                "speaker_id": "spk_1",
+                "text": "WHOOOOOA after",
+                "words": [
+                    {"text": "WHOOOOOA", "start": 0.0, "end": word_end,
+                     "size_pct": size_pct},
+                    {"text": "after", "start": word_end, "end": 3.0},
+                ],
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "S", "category": "main", "color": "#E5E517"}]
+        project = _make_project(events=events, speakers=speakers)
+        return CwiRenderer(project).render_ass("dummy.mp4")
+
+    def test_sustained_loud_word_grows(self):
+        """After the onset pop, a second transform ramps the size up."""
+        ass = self._scream_ass()
+        # Pop transform reaches the loud size (9% of 1080 = 97px)...
+        assert "\\t(0,120,\\fs97" in ass
+        # ...then the escalation ramp keeps growing to the 12% cap (130px).
+        assert "\\t(120,2000,\\fs130)" in ass
+
+    def test_escalation_capped_by_maximum_pct(self):
+        """Growth never crosses the spec 2.3.6 largest type size (12%)."""
+        ass = self._scream_ass(word_end=8.0)
+        assert "\\fs130" in ass
+        assert "\\fs175" not in ass  # 9% x 1.8 uncapped
+
+    def test_normal_word_does_not_escalate(self):
+        """Words under the loudness gate hold a single size while spoken."""
+        ass = self._scream_ass(size_pct=5.0)
+        assert "\\t(120,2000,\\fs" not in ass
+
+    def test_settle_starts_from_escalated_size(self):
+        """The scale-down begins at the size reached at the word's end."""
+        ass = self._scream_ass()
+        assert "\\fs130\\b0\\frz0\\t(0,180,\\fs54\\b0)" in ass
+
+
+# ─── Simultaneous Speakers ─────────────────────────────
+
+class TestSimultaneousSpeakers:
+    """User rule 2026-11-22: overlapping speakers stack in start order,
+    each in their own color; SFX stays the top line."""
+
+    def _overlap_ass(self, with_sfx=False):
+        from engine.renderer.renderer import CwiRenderer
+        events = [
+            {
+                "id": "evt_a",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 4.0,
+                "speaker_id": "spk_1",
+                "text": "First speaker line.",
+                "words": [{"text": "First", "start": 0.0, "end": 0.5},
+                          {"text": "speaker", "start": 0.5, "end": 1.0},
+                          {"text": "line.", "start": 1.0, "end": 1.5}],
+            },
+            {
+                "id": "evt_b",
+                "type": "dialogue",
+                "start": 1.5,
+                "end": 3.5,
+                "speaker_id": "spk_2",
+                "text": "Second voice.",
+                "words": [{"text": "Second", "start": 1.5, "end": 2.0},
+                          {"text": "voice.", "start": 2.0, "end": 2.5}],
+            },
+        ]
+        if with_sfx:
+            events.append({
+                "id": "evt_sfx",
+                "type": "sound_effect",
+                "start": 2.0,
+                "end": 3.0,
+                "text": "Beep",
+                "words": [{"text": "Beep", "start": 2.0, "end": 2.8, "size_pct": 4.0}],
+            })
+        speakers = [
+            {"id": "spk_1", "name": "A", "category": "main", "color": "#E5E517"},
+            {"id": "spk_2", "name": "B", "category": "main", "color": "#17E5E5"},
+        ]
+        project = _make_project(events=events, speakers=speakers)
+        return CwiRenderer(project).render_ass("dummy.mp4")
+
+    @staticmethod
+    def _margins(ass, needle):
+        margins = set()
+        for line in ass.split("\n"):
+            if line.startswith(("Dialogue:", "Dialogue: ")) and needle in line:
+                fields = line.split(",")
+                margins.add(int(fields[7]))
+        return margins
+
+    def test_later_speaker_stacks_above(self):
+        ass = self._overlap_ass()
+        first = self._margins(ass, "First")
+        second = self._margins(ass, "Second")
+        assert first and second
+        assert min(second) > max(first)
+
+    def test_first_speaker_keeps_normal_position(self):
+        ass = self._overlap_ass()
+        assert min(self._margins(ass, "First")) == 54
+
+    def test_sfx_stays_on_top_of_all_speakers(self):
+        ass = self._overlap_ass(with_sfx=True)
+        sfx = self._margins(ass, "[Beep]")
+        second = self._margins(ass, "Second")
+        assert sfx and second
+        assert min(sfx) > max(second)
+
+    def test_each_speaker_keeps_own_color(self):
+        ass = self._overlap_ass()
+        # Both character colors present in the overlay lines.
+        assert "E5E517" in ass or "17E5E5" in ass
+
+
+# ─── Mid-Word Pitch Contour ────────────────────────────
+
+class TestPitchContour:
+    """Launch film: syllables ride the voice pitch mid-word."""
+
+    def _pitch_ass(self, with_pitch=True):
+        from engine.renderer.renderer import CwiRenderer
+        syl_a = {"text": "who", "start": 0.0, "end": 0.5}
+        syl_b = {"text": "a", "start": 0.5, "end": 1.0}
+        syl_c = {"text": "h", "start": 1.0, "end": 1.5}
+        if with_pitch:
+            syl_a["pitch_hz"] = 250.0  # top of the range: rise
+            syl_b["pitch_hz"] = 110.0  # bottom of the range: dip
+            syl_c["pitch_hz"] = 180.0  # baseline: no offset
+        events = [
+            {
+                "id": "evt_pitch",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 2.0,
+                "speaker_id": "spk_1",
+                "text": "whoah",
+                "words": [{"text": "whoah", "start": 0.0, "end": 1.5,
+                           "syllables": [syl_a, syl_b, syl_c]}],
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "S", "category": "main", "color": "#E5E517"}]
+        project = _make_project(events=events, speakers=speakers)
+        return CwiRenderer(project).render_ass("dummy.mp4")
+
+    @staticmethod
+    def _frz_values(ass):
+        import re as _re
+        vals = set()
+        for m in _re.finditer(r"\\frz(-?[0-9]+(?:\.[0-9]+)?)", ass):
+            v = float(m.group(1))
+            if abs(v) > 1e-9:
+                vals.add(v)
+        return vals
+
+    def test_pitch_offsets_syllables_vertically(self):
+        """High and low pitches land at different heights."""
+        vals = self._frz_values(self._pitch_ass(with_pitch=True))
+        assert any(v > 0 for v in vals), f"expected a rise, got {vals}"
+        assert any(v < 0 for v in vals), f"expected a dip, got {vals}"
+
+    def test_no_pitch_data_no_contour(self):
+        """Without pitch data syllables only do the pop elevation."""
+        vals = self._frz_values(self._pitch_ass(with_pitch=False))
+        assert len(vals) == 1  # the 25% pop elevation only
+
+
+# ─── Sustained-word letter sync sweep ──────────────────
+
+class TestLetterSweepSync:
+    """User rule 2026-11-22: 'the synchronisation of scaled up word
+    should also continue' - a held loud word (launch film WHOOOOOA)
+    keeps coloring in letter by letter across its spoken window."""
+
+    def _scream_ass(self, size_pct=9.0, word_end=2.0, text="WHOOOOOA"):
+        from engine.renderer.renderer import CwiRenderer
+        events = [
+            {
+                "id": "evt_sweep",
+                "type": "dialogue",
+                "start": 0.0,
+                "end": 3.0,
+                "speaker_id": "spk_1",
+                "text": text + " after",
+                "words": [
+                    {"text": text, "start": 0.0, "end": word_end,
+                     "size_pct": size_pct},
+                    {"text": "after", "start": word_end, "end": 3.0},
+                ],
+            },
+        ]
+        speakers = [{"id": "spk_1", "name": "S", "category": "main", "color": "#E5E517"}]
+        project = _make_project(events=events, speakers=speakers)
+        return CwiRenderer(project).render_ass("dummy.mp4")
+
+    def test_letters_sweep_across_the_hold(self):
+        """Each letter flips to the speaker color at its own time."""
+        ass = self._scream_ass()
+        # 8 letters over 2.0s: 250ms per letter, 40ms color fades.
+        assert "\\t(0,40,\\c&H17E5E5&\\alpha&H00&)" in ass
+        assert "\\t(250,290,\\c&H17E5E5&\\alpha&H00&)" in ass
+        assert "\\t(1750,1790,\\c&H17E5E5&\\alpha&H00&)" in ass
+        # One sweep transform per letter.
+        assert ass.count(",\\c&H17E5E5&\\alpha&H00&)") == 8
+
+    def test_swept_letters_start_in_read_ahead_white(self):
+        """Before its sweep moment each letter stays read-ahead white."""
+        ass = self._scream_ass()
+        assert "\\c&HFFFFFF&" in ass
+
+    def test_short_loud_word_colors_at_once(self):
+        """A loud word too short for a readable sweep stays whole."""
+        ass = self._scream_ass(word_end=0.3)
+        assert ",\\c&H17E5E5&\\alpha&H00&)" not in ass
+
+    def test_normal_word_does_not_letter_sweep(self):
+        """Words under the loudness gate keep word-level sync."""
+        ass = self._scream_ass(size_pct=5.0)
+        assert ",\\c&H17E5E5&\\alpha&H00&)" not in ass
