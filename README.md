@@ -356,6 +356,7 @@ Optional feature extras (M6 AI pipeline):
 
 ```bash
 uv sync --extra dev --extra asr          # faster-whisper (local ASR)
+uv sync --extra dev --extra parakeet     # NVIDIA Parakeet via onnx-asr (CPU-first ASR, see docs/ASR_BACKENDS.md)
 uv sync --extra dev --extra diarization  # pyannote + silero VAD
 uv sync --extra dev --extra gpu          # torch + transformers (forced alignment)
 ```

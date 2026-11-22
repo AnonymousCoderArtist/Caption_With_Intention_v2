@@ -36,6 +36,7 @@ from engine.diarization.diarizer import Diarizer
 
 logger = logging.getLogger("caption_with_intention")
 
+DEFAULT_ASR_BACKEND = "faster_whisper"
 DEFAULT_DIARIZE_BACKEND = "nemotron"
 DEFAULT_DIARIZE_CONFIDENCE = 0.5
 MAX_CONCURRENT_WORKERS = 2
@@ -45,7 +46,10 @@ class SpeechPipeline:
     """Full speech processing pipeline — concurrent ASR + diarization.
 
     Args:
-        asr_model: Whisper model size for ASR.
+        asr_model: ASR model name (backend-specific; the default
+            "large-v3-turbo" applies to faster-whisper — with the
+            parakeet backend it is replaced by the Parakeet default).
+        asr_backend: ASR backend ("faster_whisper" or "parakeet").
         asr_device: "cpu" or "cuda".
         asr_compute_type: "int8" or "float16".
         diarize_backend: Diarization backend ("nemotron", "diarize",
@@ -63,6 +67,7 @@ class SpeechPipeline:
     def __init__(
         self,
         asr_model: str = "large-v3-turbo",
+        asr_backend: str = DEFAULT_ASR_BACKEND,
         asr_device: str = "cpu",
         asr_compute_type: str = "int8",
         diarize_backend: str = DEFAULT_DIARIZE_BACKEND,
@@ -74,6 +79,7 @@ class SpeechPipeline:
         min_confidence: float = 0.5,
     ) -> None:
         self.asr_model = asr_model
+        self.asr_backend = asr_backend
         self.asr_device = asr_device
         self.asr_compute_type = asr_compute_type
         self.diarize_backend = diarize_backend
@@ -92,8 +98,19 @@ class SpeechPipeline:
     @property
     def transcriber(self) -> Transcriber:
         if self._transcriber is None:
-            self._transcriber = Transcriber(
-                model=self.asr_model,
+            from engine.asr.backends import (
+                BACKEND_PARAKEET,
+                create_asr_engine,
+            )
+
+            model: str | None = self.asr_model
+            if self.asr_backend == BACKEND_PARAKEET and model == "large-v3-turbo":
+                # "large-v3-turbo" is the Whisper default; let the
+                # Parakeet backend use its own default model instead.
+                model = None
+            self._transcriber = create_asr_engine(
+                backend=self.asr_backend,
+                model=model,
                 device=self.asr_device,
                 compute_type=self.asr_compute_type,
             )
@@ -503,6 +520,7 @@ class SpeechPipeline:
         """Return pipeline configuration and load status."""
         return {
             "asr_model": self.asr_model,
+            "asr_backend": self.asr_backend,
             "asr_device": self.asr_device,
             "asr_compute_type": self.asr_compute_type,
             "diarize_backend": self.diarize_backend,

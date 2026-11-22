@@ -40,7 +40,7 @@ engine/
   project/           ← ProjectEngine (create/open/save), format.py (dir structure)
   scenes/            ← shot detection, scenes, chunking, checkpoints
   alignment/         ← M6 ✅: aligner.py (VAD refinement: vectorized RMS, adaptive threshold, short-silence merging, ffmpeg video extraction; forced: wav2vec2 CTC span via `gpu` extra), models.py
-  asr/               ← M6 ✅: transcriber.py (faster-whisper, lazy-loaded), corrector.py (rule-based transcript correction, gap-aware), models.py
+  asr/               ← M6 ✅: transcriber.py (faster-whisper, lazy-loaded), corrector.py (rule-based transcript correction, gap-aware), models.py; backends.py (pluggable factory), parakeet.py (Parakeet TDT via onnx-asr, CPU-first), longform.py (shared chunk extraction)
   speech/            ← M6 ✅: pipeline.py (concurrent ASR + diarization + correction; O(n+m) speaker matching; build_editor_payload → editor)
 frontend/            ← React/TS (editor, timeline, preview, inspector, speaker-panel, export-panel)
   editor/            ← M5 ✅: React/TypeScript editor UI
@@ -211,6 +211,13 @@ templates/           ← .gitkeep
 ### engine/editor/api.py
 - `EditorAPI`: Transport-agnostic JSON API wrapping Editor. All methods return `{"success": True, "data": ...}` or `{"error": "..."}`. Covers every Editor method: project, undo/redo, speakers, events, words, syllables, timing, typography, animation, box, speaker editor, palette, scene overrides, selection, copy/paste style, build_from_transcript.
 
+### engine/asr/backends.py + parakeet.py + longform.py
+- `create_asr_engine(backend, model=None, device, **kwargs)` — factory; backends: `faster_whisper` (default) and `parakeet`; `compute_type="int8"` maps to ONNX `quantization="int8"` on the parakeet backend
+- `ParakeetTranscriber(model="nemo-parakeet-tdt-0.6b-v3", quantization, device, language)` — onnx-asr lazy-loaded (parakeet extra); interface-compatible with Transcriber; token→word grouping with word-level timestamps + geometric-mean confidence; English-only models (v2, rnnt) reject other languages; transcribe_stream() offsets times onto the source timeline (unlike the whisper backend's chunk-relative times)
+- `tokens_to_words()`, `words_to_segments()` — pure helpers (pause >1.5s or sentence punctuation splits segments)
+- Model comparison + sources: docs/ASR_BACKENDS.md (Parakeet TDT v3 ≈41x realtime CPU, 6.75% VoxPopuli WER; Nemotron 3.5 Transcribe is the most accurate open-weight but GPU-only — future tier)
+- pyproject extra: `parakeet` (onnx-asr>=0.7); SpeechPipeline takes `asr_backend="parakeet"`
+
 ### engine/asr/transcriber.py + models.py
 - `Transcriber(model="large-v3-turbo", device, compute_type, ...)`: faster-whisper loaded lazily in `_load()` (import-safe); `transcribe()` → `TranscriptionResult` (segments + word-level timestamps/confidence); `transcribe_stream()` chunks long video via ffmpeg (spec §9: 30s chunks, 2s overlap)
 - `Word` / `Segment` / `TranscriptionResult`: dataclasses with `to_dict()`
@@ -283,6 +290,9 @@ engine.renderer.renderer    ← schemas.project, engine.renderer.styles, engine.
 engine.renderer.styles      ← schemas.project (constants)
 engine.asr.models           ← dataclasses (self-contained)
 engine.asr.transcriber      ← stdlib; faster_whisper LAZY (asr extra)
+engine.asr.parakeet         ← engine.asr.longform, engine.asr.models; onnx_asr LAZY (parakeet extra)
+engine.asr.longform         ← engine.media.probe, stdlib
+engine.asr.backends         ← factory; backend modules LAZY
 engine.asr.corrector        ← engine.asr.models (stdlib only)
 engine.alignment.models     ← engine.asr.models (dataclasses)
 engine.alignment.aligner    ← numpy, soundfile; torch/transformers LAZY (forced mode only, gpu extra)
