@@ -268,3 +268,8 @@ Publication verification: Python663passed/9skipped; frontend81passed; production
 17:49 autosave local review: existing local save preserved; added status/time, manual flush/lifecycle flush, best-effort previous valid snapshot, confirmation restore and corrupt-current fallback notice. Invalid/quota writes preserve stored current where setItem fails, JSON rescue tested.87frontend/build/full acceptance plus reload/restore/corruption/quota journey pass; screenshots inspected. Backend unchanged from710/9skip. Single current slot and simultaneous-tab limitations remain. No autosave commit/push.
 
 18:11 user approved reviewed browser autosave and asked for a silent icon/no distracting popups plus optional local-disk autosave. Current reviewed state published as focused storage,UI and documentation commits.87frontend/build/full acceptance rechecked. Silent/disk changes remain separate and require review before publication.
+
+
+### Silent autosave and optional disk copy, local review
+
+Replaced automatic save banners with a tiny topbar icon; settings/recovery only open on click. Optional user-chosen JSON file uses serialized writes after permission, alongside browser autosave. Disk errors pause until reconnect, project changes/reload detach the target. Browser support is feature-detected, not universal. No cloud/sign-in/cost added.92frontend tests,production build/full browser acceptance and focused writable-stream readback passed. Native OS picker/user-visible disk path remains manually unverified. See docs/AUTOSAVE_RECOVERY.md for permission and close/crash limits. User approved publication at18:19IST.

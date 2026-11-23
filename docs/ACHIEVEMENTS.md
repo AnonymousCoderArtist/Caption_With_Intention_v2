@@ -34,3 +34,8 @@ The editor already has basic browser-local autosave/reload recovery. A new reque
 - [Chronological checks](EDITOR_WORKING_NOTES.md)
 
 Design sources: https://captionwithintention.org and https://download.captionwithintention.org/Caption-With-Intention_Design-System_V1.0.pdf . This implementation does not establish caption-regulation compliance or official endorsement.
+
+
+### Silent autosave and optional disk copy, local review
+
+Replaced automatic save banners with a tiny topbar icon; settings/recovery only open on click. Optional user-chosen JSON file uses serialized writes after permission, alongside browser autosave. Disk errors pause until reconnect, project changes/reload detach the target. Browser support is feature-detected, not universal. No cloud/sign-in/cost added.92frontend tests,production build/full browser acceptance and focused writable-stream readback passed. Native OS picker/user-visible disk path remains manually unverified. See docs/AUTOSAVE_RECOVERY.md for permission and close/crash limits. User approved publication at18:19IST.

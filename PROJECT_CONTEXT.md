@@ -516,3 +516,5 @@ Reviewed editor autosave status,manual/lifecycle flush,previous-snapshot restore
 User approved reviewed silent-icon/disk round at18:19IST. First focused commit adds serialized optional writable-file saving and tests.92frontend/build/full browser acceptance rechecked. Native OS chooser remains manually unverified; guide and full recheck are separate local work.
 
 Reviewed quiet topbar save icon,manual settings/recovery and explicit chosen-file connection published. Browser save stays independent; disk target detaches on project changes/reload. Permission errors remain subtle and never launch prompts automatically.
+
+Disk autosave limits and evidence documented after user approval.92frontend tests,production build/full acceptance passed; focused real Chromium writable stream readback passed with picker/permission substitution. Native OS dialog and user-visible disk-file route remain unverified.
