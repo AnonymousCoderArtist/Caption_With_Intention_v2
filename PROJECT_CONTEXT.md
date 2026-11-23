@@ -538,3 +538,5 @@ Word-count evidence documented:3-word real portrait preview and actual UI-render
 ### Approved manual speaker-context review
 
 User approved19:17IST. First commit derives merged review windows with1.5scontext and timing-coverage cues. These are not calibrated identity-confidence scores.98frontend tests,build/full browser acceptance rechecked. No face model or new dependencies.
+
+Published optional OFF-by-default range panel and nearby-context playback. Inspector distinguishes text confidence from speaker review cues. Manual watch/assign/check only,no face analysis or automatic speaker/color changes.

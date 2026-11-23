@@ -10,6 +10,7 @@ import { Icon, type IconName } from "@/lib/icons";
 interface InspectorPanelProps {
   event: CaptionEvent | null;
   onAudition?:()=>void;
+  onContextReview?:()=>void;
   onNextSpeakerReview?:()=>void;
   hasMedia?:boolean;
   speakers: Speaker[];
@@ -145,7 +146,7 @@ function Slider({
 
 export function InspectorPanel({
   event,
-  onAudition,
+  onAudition,onContextReview,
   onNextSpeakerReview,
   hasMedia,
   speakers,
@@ -205,7 +206,7 @@ export function InspectorPanel({
           <span style={{ color: "var(--accent-text)" }}>{event.id}</span>
           {event.confidence != null && (
             <span>
-              · conf {Math.round(event.confidence * 100)}%
+              · text conf {Math.round(event.confidence * 100)}%
             </span>
           )}
         </div>
@@ -258,6 +259,7 @@ export function InspectorPanel({
           {event.speaker_coverage!=null&&<p>Diarization coverage: {Math.round(event.speaker_coverage*100)}%. This is timing coverage, not identity certainty.</p>}
           <p>Listen to this turn, choose the speaker below, then mark it checked. Text confidence is separate.</p>
           <button className="ghost" disabled={!hasMedia} onClick={onAudition}>Listen to turn</button>
+          {speakerReviewReasons(event,speakers).length>0&&<><button className="ghost" disabled={!hasMedia} onClick={onContextReview}>Watch nearby context</button><p>Reviews this turn plus 1.5 seconds either side. Flags are review cues, not a calibrated speaker-accuracy score. Face analysis is not running.</p></>}
           <button className="ghost" onClick={onNextSpeakerReview}>Next unchecked turn</button>
           <button className="ghost" onClick={()=>onUpdateEvent(event.id,{speaker_reviewed:!event.speaker_reviewed,manual_override:true})}>{event.speaker_reviewed?'Reopen speaker review':'Mark speaker checked'}</button>
         </div>}

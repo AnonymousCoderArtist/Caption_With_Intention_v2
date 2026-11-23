@@ -14,7 +14,7 @@ import { Timeline } from "@/components/Timeline";
 import { EventList } from "@/components/EventList";
 import { SpeakerPanel } from "@/components/SpeakerPanel";
 import { InspectorPanel } from "@/components/InspectorPanel";
-import {speakerReviewReasons} from "@/lib/speakerReview";
+import {speakerReviewReasons,speakerReviewWindows} from "@/lib/speakerReview";
 import { RenderPanel } from "@/components/RenderPanel";
 import { DraftNumber } from "@/components/DraftNumber";
 import { Toast } from "@/components/Toast";
@@ -39,6 +39,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 
 export function App() {
   const [showGuide,setShowGuide]=useState(false);
+  const [showReviewRanges,setShowReviewRanges]=useState(false);
   /* ── client (live backend, else demo) ── */
   const clientRef = useRef<EditorApiClient | DemoClient | null>(null);
   const editQueue = useRef<Promise<any>>(Promise.resolve());
@@ -530,7 +531,8 @@ export function App() {
         <p>Browser storage is not a disk backup. Source video and undo history are not stored. Use one editing tab; unfinished drafts and the newest pending write can be lost on a crash.</p>
       </section>}
       {project&&project.video.height>project.video.width&&<section className="portrait-settings" aria-label="Portrait caption paging"><label>Portrait words at a time <select aria-label="Portrait words at a time" value={project.video.portrait_words_per_page??0} onChange={e=>{const count=Number(e.target.value);void act(()=>clientRef.current!.updateProject({video:{portrait_words_per_page:count}}));}}><option value={0}>Auto fit</option>{Array.from({length:50},(_,i)=>i+1).map(n=><option key={n} value={n}>Up to {n} words</option>)}</select></label><small>Pages follow word timing automatically. Narrow space can show fewer words. Dialogue only; landscape unchanged.</small></section>}
-      <nav className="workspace-tabs" aria-label="Editor workspaces">{['Edit','Text','Color','Speakers','Export'].map(tab=><button key={tab} aria-pressed={workspace===tab} onClick={()=>{setWorkspace(tab);if(tab==='Speakers')setActivePanel('speakers');if(tab==='Text'||tab==='Edit')setActivePanel('events');if(tab==='Export')setShowRender(true);else if(!renderActive.current)setShowRender(false);}}>{tab}</button>)}<label><input type="checkbox" checked={lightPreview} onChange={e=>setLightPreview(e.target.checked)}/> Lightweight preview (15 fps)</label></nav>
+      {showReviewRanges&&project&&<section className="review-ranges" aria-label="Uncertain speaker ranges"><b>Speaker review ranges</b><p>Based on missing attribution, short turns, limited timing coverage or supplied review flags. Not speaker confidence percentages. Includes 1.5 seconds of context; overlapping ranges merge. No face model runs.</p>{speakerReviewWindows(project.events,project.speakers,duration).map(range=><button key={range.start} disabled={!mediaUrl} onClick={()=>{setTime(range.start);auditionEnd.current=range.end;setPlaying(true);}}>Watch {range.start.toFixed(2)}–{range.end.toFixed(2)}s · {range.eventIds.length} turns</button>)}{!speakerReviewWindows(project.events,project.speakers,duration).length&&<p>No flagged ranges. This does not certify all speakers are correct.</p>}</section>}
+      <nav className="workspace-tabs" aria-label="Editor workspaces">{['Edit','Text','Color','Speakers','Export'].map(tab=><button key={tab} aria-pressed={workspace===tab} onClick={()=>{setWorkspace(tab);if(tab==='Speakers')setActivePanel('speakers');if(tab==='Text'||tab==='Edit')setActivePanel('events');if(tab==='Export')setShowRender(true);else if(!renderActive.current)setShowRender(false);}}>{tab}</button>)}<label><input type="checkbox" checked={showReviewRanges} onChange={e=>setShowReviewRanges(e.target.checked)}/> Show speaker review ranges</label><label><input type="checkbox" checked={lightPreview} onChange={e=>setLightPreview(e.target.checked)}/> Lightweight preview (15 fps)</label></nav>
       {workspace==='Color'&&<section className="grade-panel" aria-label="Video color grading"><b>Video color</b>{(['brightness','contrast','saturation'] as const).map(key=><label key={key}>{key}<DraftNumber aria-label={`Video ${key}`} value={project?.video[key]??(key==='brightness'?0:1)} min={key==='brightness'?-.5:key==='contrast'?.5:0} max={key==='brightness'?.5:2} step={.05} onCommit={value=>act(()=>clientRef.current!.updateProject({video:{[key]:value}}))}/></label>)}<button onClick={()=>act(()=>clientRef.current!.updateProject({video:{brightness:0,contrast:1,saturation:1}}))}>Reset grade</button><small>Source video only. Captions stay unchanged. Browser grade is approximate; final MP4 uses FFmpeg.</small></section>}
       <Toolbar
         onUndo={undo}
@@ -653,6 +655,7 @@ export function App() {
             event={selectedEvent}
             speakers={project?.speakers ?? []}
             onUpdateEvent={updateEvent}
+            onContextReview={()=>{if(selectedEvent){setTime(Math.max(0,selectedEvent.start-1.5));auditionEnd.current=Math.min(duration,selectedEvent.end+1.5);setPlaying(true);}}}
             onAudition={()=>{if(selectedEvent){setTime(Math.max(0,selectedEvent.start-.15));auditionEnd.current=selectedEvent.end+.15;setPlaying(true);}}}
             onNextSpeakerReview={()=>{const candidates=project?.events.filter(e=>speakerReviewReasons(e,project.speakers).length).sort((a,b)=>a.start-b.start)??[];const next=candidates.find(e=>e.start>(selectedEvent?.start??-1))??candidates[0];if(next)selectEvent(next.id);else showToast('No unchecked speaker turns remain.');}}
             hasMedia={!!mediaUrl}
