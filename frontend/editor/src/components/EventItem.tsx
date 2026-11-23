@@ -1,5 +1,6 @@
 import type { CaptionEvent, Speaker } from "@/types/project";
 import { fmtTime, EVENT_TYPES } from "@/lib/theme";
+import {soundNeedsReview} from '@/lib/soundReview';
 import {speakerReviewReasons} from "@/lib/speakerReview";
 import { Icon } from "@/lib/icons";
 
@@ -31,6 +32,8 @@ export function EventItem({
       onKeyDown={e=>{if(e.target!==e.currentTarget)return;if(e.key==='Enter'||e.code==='Space'){e.preventDefault();e.stopPropagation();onSelect(e.shiftKey||e.ctrlKey||e.metaKey);}}}
     >
       {speakerReviewReasons(event,speakers).length>0&&<span className="speaker-warning">Check speaker</span>}
+
+      {soundNeedsReview(event)&&<span className="speaker-warning">Check sound</span>}
 
       {/* top row */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>

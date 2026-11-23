@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { CaptionEvent, Speaker } from "@/types/project";
 import { EventItem } from "./EventItem";
+import {soundNeedsReview} from '@/lib/soundReview';
 import {speakerReviewReasons} from "@/lib/speakerReview";
 import { Icon } from "@/lib/icons";
 
@@ -25,9 +26,10 @@ export function EventList({
 }: EventListProps) {
   const [query, setQuery] = useState("");
   const [reviewOnly,setReviewOnly]=useState(false);
+  const [soundOnly,setSoundOnly]=useState(false);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const candidates=reviewOnly?events.filter(e=>speakerReviewReasons(e,speakers).length):events;
+    const candidates=events.filter(e=>(!reviewOnly||speakerReviewReasons(e,speakers).length)&&(!soundOnly||soundNeedsReview(e)));
     if (!q) return candidates;
     return candidates.filter(
       (e) =>
@@ -37,7 +39,7 @@ export function EventList({
         speakers.find((s) => s.id === e.speaker_id)?.name.toLowerCase()
           .includes(q),
     );
-  }, [events, query, speakers,reviewOnly]);
+  }, [events, query, speakers,reviewOnly,soundOnly]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
@@ -75,6 +77,7 @@ export function EventList({
       </div>
 
       <label className="review-filter"><input type="checkbox" checked={reviewOnly} onChange={e=>setReviewOnly(e.target.checked)}/> Speaker review · {events.filter(e=>speakerReviewReasons(e,speakers).length).length}</label>
+      <label className="review-filter"><input type="checkbox" checked={soundOnly} onChange={e=>setSoundOnly(e.target.checked)}/> Sound review · {events.filter(soundNeedsReview).length}</label>
       {/* list / empty */}
       {filtered.length === 0 ? (
         <div className="empty-state">
@@ -82,14 +85,14 @@ export function EventList({
             <Icon name="list" size={24} />
           </div>
           <div className="empty-title">
-            {query ? "No matching events" : reviewOnly ? "Speaker review complete" : "No caption events"}
+            {query ? "No matching events" : soundOnly ? "Sound review complete" : reviewOnly ? "Speaker review complete" : "No caption events"}
           </div>
           <div className="empty-body">
             {query
               ? "Try a different search term."
-              : reviewOnly ? "No captions match this review filter. Turn it off to see all captions." : "Build your project from a transcript, or add events by hand."}
+              : (reviewOnly||soundOnly) ? "No captions match this review filter. Turn it off to see all captions." : "Build your project from a transcript, or add events by hand."}
           </div>
-          {!query && !reviewOnly && (
+          {!query && !reviewOnly && !soundOnly && (
             <button className="primary" onClick={onNew} style={{ marginTop: 4 }}>
               <Icon name="plus" size={14} strokeWidth={2.4} />
               Create event

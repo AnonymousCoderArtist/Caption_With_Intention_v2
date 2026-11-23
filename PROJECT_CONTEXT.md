@@ -480,3 +480,5 @@ Reviewed polish publication complete. Actual45s graded MP4 and selected-letter c
 User approved the reviewed audit on2026-11-23 at16:32IST. First commit: FFT autocorrelation and bounded sound-classifier correctness. Full pre-push checks:684Python passed/9skipped,82frontend passed,build and browser acceptance passed. Further audit feature commits follow. No later long-video work included.
 
 Shared-waveform analysis and opt-in unverified sound suggestions now flow into editable events. Model confidence remains unknown, speech-covered frames excluded, and source memory remains whole-waveform. Maximum event end sets sequence duration.
+
+Sound review UI: pending model-sourced sound/music events get a separate filter and visible Check sound label. Accept/correct status removes reviewed proposals from the filter. Desktop screenshot, actual category render and accept/save/pending journey inspected.
