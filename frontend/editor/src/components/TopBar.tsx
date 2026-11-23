@@ -2,6 +2,7 @@ import type {ReactNode} from "react";
 import { Icon } from "@/lib/icons";
 
 interface TopBarProps {
+  onGuide:()=>void;
   projectName: string;
   onRename: (name: string) => void;
   onRenameCommit: () => void;
@@ -17,7 +18,7 @@ interface TopBarProps {
 }
 
 export function TopBar({
-  projectName,
+  onGuide,projectName,
   onRename,
   onRenameCommit,
   source,
@@ -87,6 +88,7 @@ export function TopBar({
       <div className="sep" />
 
       {/* actions */}
+      <button className="ghost" onClick={onGuide}>Guide</button>
       <button className="icon-btn" title="Back to start" onClick={onExit}>
         <Icon name="monitor" size={17} />
       </button>

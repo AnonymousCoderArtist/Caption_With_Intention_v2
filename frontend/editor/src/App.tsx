@@ -5,6 +5,7 @@ import {DiskAutosave,supportsDiskAutosave,type DiskState} from "@/lib/diskAutosa
 import {browserStorage,previousRecovery,readLocalRecovery,savedAt,writeLocalAutosave} from "@/lib/autosave";
 import { emptyProject, parseProject } from "@/lib/projectFile";
 import type { Project, CaptionEvent, Word, Style } from "@/types/project";
+import {EditorGuide} from "@/components/EditorGuide";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { TopBar } from "@/components/TopBar";
 import { Toolbar } from "@/components/Toolbar";
@@ -37,6 +38,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 export function App() {
+  const [showGuide,setShowGuide]=useState(false);
   /* ── client (live backend, else demo) ── */
   const clientRef = useRef<EditorApiClient | DemoClient | null>(null);
   const editQueue = useRef<Promise<any>>(Promise.resolve());
@@ -437,7 +439,7 @@ export function App() {
     if (!started) return;
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
-      if(el.closest('.render-panel'))return;
+      if(el.closest('.render-panel,.editor-guide'))return;
       if(e.code==='Space'&&el.closest('button,a,[role="button"]'))return;
       if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)
         return;
@@ -485,15 +487,18 @@ export function App() {
 
   /* ── render ── */
   if (!started) {
-    return <><WelcomeScreen onNew={() => start(true)} onOpen={() => start(false)} onImport={() => projectInputRef.current?.click()} />
+    return <><WelcomeScreen onGuide={()=>setShowGuide(true)} onNew={() => start(true)} onOpen={() => start(false)} onImport={() => projectInputRef.current?.click()} />
       <input ref={projectInputRef} type="file" accept=".json" hidden aria-label="Open project JSON" onChange={e => {const f=e.target.files?.[0];if(f)void importProject(f);e.target.value='';}} />
+      {showGuide&&<EditorGuide onClose={()=>setShowGuide(false)}/>}
       {toast && <Toast message={toast.msg} kind={toast.kind}/>}</>;
   }
 
   return (
     <div className="app-shell" ref={shellRef} data-mobile-panel={mobilePanel} data-workspace={workspace}>
       <input ref={projectInputRef} type="file" accept=".json" hidden aria-label="Open project JSON" onChange={e => {const f=e.target.files?.[0];if(f)void importProject(f);e.target.value='';}} />
+      {showGuide&&<EditorGuide onClose={()=>setShowGuide(false)} onWorkspace={setWorkspace}/>}
       <TopBar
+        onGuide={()=>setShowGuide(true)}
         saveIndicator={<>
         <button className={`autosave-icon ${saveError||diskState==='error'?'save-problem':''}`} aria-label="Autosave settings" title={`${saveError?'Browser autosave failed':autosaveState==='saving'?'Saving locally':lastSaved?'Saved locally at '+new Date(lastSaved).toLocaleTimeString():'Browser autosave ready'}${diskState==='off'?'':diskState==='error'?' · Disk save needs attention':' · Disk '+diskState}`} onClick={()=>{setShowRecovery(v=>!v);setRecoveryVersion(v=>v+1);}}>{saveError||diskState==='error'?'!':autosaveState==='saving'||diskState==='saving'?'◌':'✓'}</button>
       </>}

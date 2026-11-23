@@ -518,3 +518,7 @@ User approved reviewed silent-icon/disk round at18:19IST. First focused commit a
 Reviewed quiet topbar save icon,manual settings/recovery and explicit chosen-file connection published. Browser save stays independent; disk target detaches on project changes/reload. Permission errors remain subtle and never launch prompts automatically.
 
 Disk autosave limits and evidence documented after user approval.92frontend tests,production build/full acceptance passed; focused real Chromium writable stream readback passed with picker/permission substitution. Native OS dialog and user-visible disk-file route remain unverified.
+
+### Approved guide and portrait round
+
+User approved at18:34IST,portrait adaptation reconfirmed18:36IST. Optional8-topic guide published first.711Python/9skip,94frontend,build/full browser acceptance pass. New words-per-page setting and visual speaker research are separate uncommitted rounds.

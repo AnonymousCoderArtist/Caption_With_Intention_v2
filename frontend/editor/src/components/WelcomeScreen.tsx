@@ -1,7 +1,8 @@
 /** Website-inspired entry, kept separate from caption playback behavior. */
 import { Icon } from "@/lib/icons";
 
-export function WelcomeScreen({ onNew, onOpen, onImport }: {
+export function WelcomeScreen({ onNew, onOpen, onImport,onGuide }: {
+  onGuide:()=>void;
   onNew: () => void;
   onOpen: () => void;
   onImport: () => void;
@@ -12,6 +13,7 @@ export function WelcomeScreen({ onNew, onOpen, onImport }: {
         <div className="site-mark" aria-label="Automated CWI editor"><span>CI</span></div>
         <p className="welcome-nav-title">Automated<br />Caption With Intention</p>
         <nav aria-label="Start navigation">
+          <button onClick={onGuide}>Editor guide <span aria-hidden="true">→</span></button>
           <button onClick={onOpen}>The editor <span aria-hidden="true">→</span></button>
           <a href="https://captionwithintention.org" target="_blank" rel="noreferrer">The design system <span aria-hidden="true">↗</span></a>
         </nav>
