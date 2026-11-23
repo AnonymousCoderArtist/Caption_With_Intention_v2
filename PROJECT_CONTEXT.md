@@ -534,3 +534,7 @@ User approved18:43IST. Portrait-only maximum1..50words per timed page,Auto fit d
 Reviewed portrait-only words-at-a-time selector,preview/JSON support and validation published. Width can require fewer than the maximum. Guide workspace-jump capitalization fixed. Landscape unaffected.
 
 Word-count evidence documented:3-word real portrait preview and actual UI-rendered MP4 checked. Portrait count remains a maximum;long words/manual type/complex overlap still require review. No face processing code added to repository.
+
+### Approved manual speaker-context review
+
+User approved19:17IST. First commit derives merged review windows with1.5scontext and timing-coverage cues. These are not calibrated identity-confidence scores.98frontend tests,build/full browser acceptance rechecked. No face model or new dependencies.
