@@ -454,3 +454,7 @@ All morning changes remain local, with no commit or push. Detailed checks and re
 ### 2026-11-23 approved editor publication
 
 User reviewed the simplified cards and colored speaker timeline lanes, then approved several logical commits and a push. Final local verification:660Python passed/9documented skips,78frontend passed,production build and browser acceptance pass. Exact preview/final parity and automatic identity accuracy remain unsigned.
+
+### Approved polish publication
+
+Workspace tabs: Edit, Text, Color, Speakers and Export are focused views of one project. User approved separate feature commits and separate pushes on 2026-11-23 at15:54IST. Full reviewed-round checks:663Python passed/9skipped,81frontend passed,production build and browser acceptance passed. Remaining feature commits follow.

@@ -2087,3 +2087,16 @@ button:focus-visible, [role="button"]:focus-visible, [role="slider"]:focus-visib
  .monitor-rec {font-size:7px;letter-spacing:0;gap:4px;}
  .monitor-tc {font-size:7px;padding:3px;}
 }
+
+.workspace-tabs {display:flex;gap:6px;align-items:center;padding:7px 18px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.workspace-tabs button {background:transparent;color:var(--text-400);border:none;padding:6px 14px;}
+.workspace-tabs button[aria-pressed="true"] {color:var(--accent-text);background:var(--accent-softer);}
+
+.app-shell[data-workspace="Text"] .timeline-area{height:180px!important;}
+.app-shell[data-workspace="Color"] .sidebar,.app-shell[data-workspace="Color"] .inspector{display:none;}
+.app-shell[data-workspace="Color"] .timeline-area{height:190px!important;}
+
+.app-shell[data-workspace="Speakers"] .inspector{display:none;}
+.app-shell[data-workspace="Export"] .sidebar,.app-shell[data-workspace="Export"] .inspector{opacity:.45;}
+
+@media(max-width:700px){.workspace-tabs{overflow-x:auto;padding:6px;gap:2px;}.workspace-tabs button{padding:6px 9px;}}

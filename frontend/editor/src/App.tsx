@@ -83,6 +83,7 @@ export function App() {
   const [project, setProject] = useState<Project | null>(null);
   const [projectName, setProjectName] = useState("Untitled Project");
   const [mobilePanel, setMobilePanel] = useState<'events'|'preview'|'properties'>('preview');
+  const [workspace,setWorkspace]=useState('Edit');
   const [activePanel, setActivePanel] = useState<ActivePanel>("events");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedIds,setSelectedIds]=useState<string[]>([]);
@@ -177,7 +178,7 @@ export function App() {
         sessionVersion.current++; clientRef.current = new DemoClient(emptyProject()); setSource('demo');
         setSelectedEventId(null); setSelectedIds([]); setTime(0); setPlaying(false);
         setMediaUrl(null); setSourceFile(null); setMediaName(''); setMediaDuration(null);
-        setShowProjectSettings(false);setShowRender(false); clipboardRef.current = null; auditionEnd.current=null;
+        setWorkspace('Edit');setShowProjectSettings(false);setShowRender(false); clipboardRef.current = null; auditionEnd.current=null;
       }
       const c = await ensureClient();
       const version=sessionVersion.current;
@@ -218,7 +219,7 @@ export function App() {
       clientRef.current = new DemoClient(data); setSource('demo'); setProject(data);
       setProjectName(data.project_name); setSelectedEventId(null); setSelectedIds([]); setTime(0); setPlaying(false); setStarted(true);
       setMediaUrl(null); setSourceFile(null); setMediaName(''); setMediaDuration(null);
-      setShowProjectSettings(false);setShowRender(false);clipboardRef.current=null;auditionEnd.current=null;
+      setWorkspace('Edit');setShowProjectSettings(false);setShowRender(false);clipboardRef.current=null;auditionEnd.current=null;
       showToast('Project opened locally. Import its video separately.');
     } catch (error) { showToast(error instanceof Error ? error.message : 'Could not open project.', 'error'); }
   };
@@ -438,7 +439,7 @@ export function App() {
   }
 
   return (
-    <div className="app-shell" ref={shellRef} data-mobile-panel={mobilePanel}>
+    <div className="app-shell" ref={shellRef} data-mobile-panel={mobilePanel} data-workspace={workspace}>
       <input ref={projectInputRef} type="file" accept=".json" hidden aria-label="Open project JSON" onChange={e => {const f=e.target.files?.[0];if(f)void importProject(f);e.target.value='';}} />
       {saveError && <div className="save-warning" role="alert">Browser storage is full or unavailable. Save project JSON to keep your changes.</div>}
       <TopBar
@@ -455,6 +456,7 @@ export function App() {
         onExit={() => {if(renderActive.current){showToast('Finish or cancel the active render before leaving the editor.', 'error');return;} setPlaying(false); setStarted(false); }}
       />
 
+      <nav className="workspace-tabs" aria-label="Editor workspaces">{['Edit','Text','Color','Speakers','Export'].map(tab=><button key={tab} aria-pressed={workspace===tab} onClick={()=>{setWorkspace(tab);if(tab==='Speakers')setActivePanel('speakers');if(tab==='Text'||tab==='Edit')setActivePanel('events');if(tab==='Export')setShowRender(true);else if(!renderActive.current)setShowRender(false);}}>{tab}</button>)}</nav>
       <Toolbar
         onUndo={undo}
         onRedo={redo}
@@ -553,7 +555,7 @@ export function App() {
             onStep={step}
             onSkip={skip}
           />
-          <div style={{ flexShrink: 0, height: 300, padding: "0 16px 14px" }}>
+          <div className="timeline-area" style={{ flexShrink: 0, height: 300, padding: "0 16px 14px" }}>
             <Timeline key={sessionVersion.current}
               project={project}
               selectedEventId={selectedEventId}
