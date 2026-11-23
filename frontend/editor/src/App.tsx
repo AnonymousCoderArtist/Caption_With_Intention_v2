@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorApiClient } from "@/api/client";
 import { DemoClient } from "@/lib/demoProject";
-import { emptyProject, parseProject, STORAGE_KEY } from "@/lib/projectFile";
+import {browserStorage,previousRecovery,readLocalRecovery,savedAt,writeLocalAutosave} from "@/lib/autosave";
+import { emptyProject, parseProject } from "@/lib/projectFile";
 import type { Project, CaptionEvent, Word, Style } from "@/types/project";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { TopBar } from "@/components/TopBar";
@@ -46,8 +47,8 @@ export function App() {
     if (clientRef.current) return clientRef.current;
     // A local editing session must not disappear just because the API is up.
     try {
-      const saved=localStorage.getItem(STORAGE_KEY);
-      if(saved){clientRef.current=new DemoClient(parseProject(saved));setSource('demo');return clientRef.current;}
+      const recovery=readLocalRecovery(browserStorage);
+      if(recovery.project){clientRef.current=new DemoClient(recovery.project);setSource('demo');return clientRef.current;}
     } catch { /* unavailable or malformed local data can fall back to the API */ }
     const openingVersion=sessionVersion.current;
     const live = new EditorApiClient(async (action, params) => {
@@ -72,7 +73,7 @@ export function App() {
     }
     if(openingVersion!==sessionVersion.current&&clientRef.current)return clientRef.current;
     let local: Project | undefined;
-    try { const saved = localStorage.getItem(STORAGE_KEY); if (saved) local = parseProject(saved); } catch { /* old or unavailable local storage */ }
+    try { local = readLocalRecovery(browserStorage).project??undefined; } catch { /* old or unavailable local storage */ }
     clientRef.current = new DemoClient(local);
     setSource("demo");
     return clientRef.current;
@@ -103,6 +104,20 @@ export function App() {
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
   const [saveError, setSaveError] = useState(false);
+  const [autosaveState,setAutosaveState]=useState<'idle'|'saving'|'saved'|'error'>('idle');
+  const [lastSaved,setLastSaved]=useState<number|null>(()=>savedAt(browserStorage));
+  const [recoveredPrevious,setRecoveredPrevious]=useState(()=>readLocalRecovery(browserStorage).from==='previous');
+  const [showRecovery,setShowRecovery]=useState(false);
+  const [recoveryVersion,setRecoveryVersion]=useState(0);
+  const latestSnapshot=useRef<Project|null>(null);
+  const autosaveTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const flushAutosave=useCallback(()=>{
+    if(autosaveTimer.current)clearTimeout(autosaveTimer.current);
+    autosaveTimer.current=null;
+    if(!latestSnapshot.current)return;
+    try{const at=writeLocalAutosave(browserStorage,latestSnapshot.current);setLastSaved(at);setSaveError(false);setAutosaveState('saved');}
+    catch{setSaveError(true);setAutosaveState('error');}
+  },[]);
   const [showProjectSettings, setShowProjectSettings] = useState(false);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [mediaName, setMediaName] = useState('');
@@ -202,13 +217,30 @@ export function App() {
   );
 
   useEffect(() => {
-    if (!project || source !== 'demo') return;
-    const timer = setTimeout(() => {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({...project,project_name:projectName})); setSaveError(false); }
-      catch { setSaveError(true); }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [project, projectName, source]);
+    if(!project)return;
+    latestSnapshot.current={...project,project_name:projectName};
+    setAutosaveState('saving');
+    autosaveTimer.current=setTimeout(flushAutosave,300);
+    return()=>{if(autosaveTimer.current)clearTimeout(autosaveTimer.current);};
+  },[project,projectName,flushAutosave]);
+  useEffect(()=>{
+    const hidden=()=>{if(document.visibilityState==='hidden')flushAutosave();};
+    const before=(event:BeforeUnloadEvent)=>{flushAutosave();if(latestSnapshot.current){try{writeLocalAutosave(browserStorage,latestSnapshot.current);}catch{event.preventDefault();event.returnValue='';}}};
+    window.addEventListener('pagehide',flushAutosave);document.addEventListener('visibilitychange',hidden);window.addEventListener('beforeunload',before);
+    return()=>{window.removeEventListener('pagehide',flushAutosave);document.removeEventListener('visibilitychange',hidden);window.removeEventListener('beforeunload',before);};
+  },[flushAutosave]);
+  const restorePrevious=()=>{
+    const previous=previousRecovery(browserStorage);
+    if(!previous){showToast('No valid previous local snapshot is available.','error');return;}
+    if(renderActive.current){showToast('Finish or cancel the render before restoring.','error');return;}
+    if(!window.confirm('Restore the previous local snapshot? Download the current project JSON first if you want to keep it.'))return;
+    if(autosaveTimer.current)clearTimeout(autosaveTimer.current);
+    sessionVersion.current++;clientRef.current=new DemoClient(previous);setSource('demo');
+    setProject(previous);setProjectName(previous.project_name);setSelectedEventId(null);setSelectedIds([]);setPlaying(false);setTime(0);
+    setMediaUrl(null);setSourceFile(null);setMediaName('');setMediaDuration(null);setWorkspace('Edit');setShowRender(false);setShowProjectSettings(false);
+    clipboardRef.current=null;auditionEnd.current=null;setRecoveredPrevious(true);setShowRecovery(false);setRecoveryVersion(v=>v+1);
+    showToast('Previous local snapshot restored. Select its matching video again.');
+  };
 
   const importProject = async (file: File) => {
     try {
@@ -458,6 +490,13 @@ export function App() {
         onExit={() => {if(renderActive.current){showToast('Finish or cancel the active render before leaving the editor.', 'error');return;} setPlaying(false); setStarted(false); }}
       />
 
+      <div className="autosave-strip" aria-label="Local autosave">
+        <span role="status">{autosaveState==='saving'?'Saving locally…':autosaveState==='error'?'Autosave failed':autosaveState==='saved'?`Saved locally${lastSaved?' at '+new Date(lastSaved).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}):''}`:'Local autosave ready'}</span>
+        <button onClick={flushAutosave}>Save locally now</button><button onClick={()=>{setShowRecovery(v=>!v);setRecoveryVersion(v=>v+1);}}>Recovery</button>
+        <small>On this browser only. Download JSON for a backup. Source video is not stored.</small>
+      </div>
+      {recoveredPrevious&&<div className="save-warning" role="status">Recovered a previous local snapshot. Check it, then download project JSON.<button onClick={()=>setRecoveredPrevious(false)}>Dismiss</button></div>}
+      {showRecovery&&<section className="recovery-panel" aria-label="Autosave recovery" key={recoveryVersion}><b>Previous local snapshot</b><p>{previousRecovery(browserStorage)?`${previousRecovery(browserStorage)!.project_name} · ${previousRecovery(browserStorage)!.events.length} captions`:'No valid previous snapshot available.'}</p><p>One previous saved snapshot is kept when browser space allows. It is not a version history or a disk backup. Restoring replaces this editing session; video must be selected again.</p><button onClick={restorePrevious} disabled={!previousRecovery(browserStorage)}>Restore previous snapshot</button><button onClick={exportProject}>Download current JSON</button></section>}
       <nav className="workspace-tabs" aria-label="Editor workspaces">{['Edit','Text','Color','Speakers','Export'].map(tab=><button key={tab} aria-pressed={workspace===tab} onClick={()=>{setWorkspace(tab);if(tab==='Speakers')setActivePanel('speakers');if(tab==='Text'||tab==='Edit')setActivePanel('events');if(tab==='Export')setShowRender(true);else if(!renderActive.current)setShowRender(false);}}>{tab}</button>)}<label><input type="checkbox" checked={lightPreview} onChange={e=>setLightPreview(e.target.checked)}/> Lightweight preview (15 fps)</label></nav>
       {workspace==='Color'&&<section className="grade-panel" aria-label="Video color grading"><b>Video color</b>{(['brightness','contrast','saturation'] as const).map(key=><label key={key}>{key}<DraftNumber aria-label={`Video ${key}`} value={project?.video[key]??(key==='brightness'?0:1)} min={key==='brightness'?-.5:key==='contrast'?.5:0} max={key==='brightness'?.5:2} step={.05} onCommit={value=>act(()=>clientRef.current!.updateProject({video:{[key]:value}}))}/></label>)}<button onClick={()=>act(()=>clientRef.current!.updateProject({video:{brightness:0,contrast:1,saturation:1}}))}>Reset grade</button><small>Source video only. Captions stay unchanged. Browser grade is approximate; final MP4 uses FFmpeg.</small></section>}
       <Toolbar

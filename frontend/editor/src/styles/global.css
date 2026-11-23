@@ -2104,3 +2104,5 @@ button:focus-visible, [role="button"]:focus-visible, [role="slider"]:focus-visib
 
 .app-shell[data-workspace="Speakers"] .inspector{display:none;}
 .app-shell[data-workspace="Export"] .sidebar,.app-shell[data-workspace="Export"] .inspector{opacity:.45;}
+
+.autosave-strip{display:flex;align-items:center;gap:12px;padding:5px 18px;border-bottom:1px solid var(--border);font-size:11px;flex-shrink:0;}.autosave-strip>span{color:var(--accent-text);min-width:160px;}.autosave-strip button{font-size:10px;padding:4px 8px;}.autosave-strip small{color:var(--text-400);margin-left:auto;}.recovery-panel{padding:12px 20px;background:var(--bg-3);border-bottom:1px solid var(--border);font-size:12px;flex-shrink:0;}.recovery-panel p{margin:6px 0;color:var(--text-400);}.recovery-panel button{margin-right:8px;}
