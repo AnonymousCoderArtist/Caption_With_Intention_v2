@@ -24,3 +24,5 @@ it('rejects malformed metadata that would reach text controls and provenance lab
  const cases=[(p:any)=>p.project_name={},(p:any)=>p.scenes='bad',(p:any)=>p.speakers[0].notes={},(p:any)=>p.events[0].source_model={},(p:any)=>p.events[0].words[0].review_state='unknown',(p:any)=>p.events[0].words[0].confidence=2];
  for(const change of cases){const p=createDemoProject();change(p);expect(()=>parseProject(JSON.stringify(p))).toThrow();}
 });
+
+it('validates portrait paging counts on import',()=>{const p=createDemoProject();p.video.portrait_words_per_page=3;expect(parseProject(JSON.stringify(p)).video.portrait_words_per_page).toBe(3);p.video.portrait_words_per_page=2.5;expect(()=>parseProject(JSON.stringify(p))).toThrow('integer');});

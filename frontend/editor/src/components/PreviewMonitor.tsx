@@ -29,7 +29,7 @@ function Caption({ event, project, time, height, onSelect, selected }: {
   const base = height * .05;
   let wordOffset=0;
   const lines = (event.type==='dialogue'||event.type==='speaker_overlap'||event.type==='custom') && event.words.length
-    ? captionLines(event,project.video.width,project.video.height,time).map(line=>{const offset=event.words.indexOf(line[0]);const displayed=words.slice(offset>=0?offset:wordOffset,(offset>=0?offset:wordOffset)+line.length);wordOffset+=line.length;return displayed;}) : [words];
+    ? captionLines(event,project.video.width,project.video.height,time,project.video.portrait_words_per_page??0).map(line=>{const offset=event.words.indexOf(line[0]);const displayed=words.slice(offset>=0?offset:wordOffset,(offset>=0?offset:wordOffset)+line.length);wordOffset+=line.length;return displayed;}) : [words];
   const breakout = words.some(w => (event.style.size_mode==='manual'?event.style.size_pct:w.size_pct) >= (event.type==='sound_effect'?6:10));
   return <div className="composition-group" style={{display:'flex',flexDirection:'column',alignItems:'center',gap:captionLineGap(event,lines,height,project.video.height)}}>{lines.map((line,lineIndex)=><div key={lineIndex} className={`composition-event ${selected ? 'selected' : ''}`} role="button" tabIndex={0}
     aria-label={`Select caption: ${event.text}`} onClick={() => onSelect?.(event.id)}

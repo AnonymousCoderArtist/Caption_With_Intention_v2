@@ -496,7 +496,7 @@ export function App() {
   return (
     <div className="app-shell" ref={shellRef} data-mobile-panel={mobilePanel} data-workspace={workspace}>
       <input ref={projectInputRef} type="file" accept=".json" hidden aria-label="Open project JSON" onChange={e => {const f=e.target.files?.[0];if(f)void importProject(f);e.target.value='';}} />
-      {showGuide&&<EditorGuide onClose={()=>setShowGuide(false)} onWorkspace={setWorkspace}/>}
+      {showGuide&&<EditorGuide onClose={()=>setShowGuide(false)} onWorkspace={value=>{const tab=value[0].toUpperCase()+value.slice(1);setWorkspace(tab);if(value==='speakers')setActivePanel('speakers');if(value==='export')setShowRender(true);}}/>}
       <TopBar
         onGuide={()=>setShowGuide(true)}
         saveIndicator={<>
@@ -529,6 +529,7 @@ export function App() {
         <button onClick={restorePrevious} disabled={!previousRecovery(browserStorage)}>Restore previous snapshot</button>
         <p>Browser storage is not a disk backup. Source video and undo history are not stored. Use one editing tab; unfinished drafts and the newest pending write can be lost on a crash.</p>
       </section>}
+      {project&&project.video.height>project.video.width&&<section className="portrait-settings" aria-label="Portrait caption paging"><label>Portrait words at a time <select aria-label="Portrait words at a time" value={project.video.portrait_words_per_page??0} onChange={e=>{const count=Number(e.target.value);void act(()=>clientRef.current!.updateProject({video:{portrait_words_per_page:count}}));}}><option value={0}>Auto fit</option>{Array.from({length:50},(_,i)=>i+1).map(n=><option key={n} value={n}>Up to {n} words</option>)}</select></label><small>Pages follow word timing automatically. Narrow space can show fewer words. Dialogue only; landscape unchanged.</small></section>}
       <nav className="workspace-tabs" aria-label="Editor workspaces">{['Edit','Text','Color','Speakers','Export'].map(tab=><button key={tab} aria-pressed={workspace===tab} onClick={()=>{setWorkspace(tab);if(tab==='Speakers')setActivePanel('speakers');if(tab==='Text'||tab==='Edit')setActivePanel('events');if(tab==='Export')setShowRender(true);else if(!renderActive.current)setShowRender(false);}}>{tab}</button>)}<label><input type="checkbox" checked={lightPreview} onChange={e=>setLightPreview(e.target.checked)}/> Lightweight preview (15 fps)</label></nav>
       {workspace==='Color'&&<section className="grade-panel" aria-label="Video color grading"><b>Video color</b>{(['brightness','contrast','saturation'] as const).map(key=><label key={key}>{key}<DraftNumber aria-label={`Video ${key}`} value={project?.video[key]??(key==='brightness'?0:1)} min={key==='brightness'?-.5:key==='contrast'?.5:0} max={key==='brightness'?.5:2} step={.05} onCommit={value=>act(()=>clientRef.current!.updateProject({video:{[key]:value}}))}/></label>)}<button onClick={()=>act(()=>clientRef.current!.updateProject({video:{brightness:0,contrast:1,saturation:1}}))}>Reset grade</button><small>Source video only. Captions stay unchanged. Browser grade is approximate; final MP4 uses FFmpeg.</small></section>}
       <Toolbar

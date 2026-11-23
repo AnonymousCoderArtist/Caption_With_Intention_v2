@@ -34,7 +34,7 @@ export const guideSteps:[string,string,GuideWorkspace|null,string[]][]=[
  ['Render and inspect','Export workspace','export',[
   'Import the matching source video, then choose Render video and Start local render. This needs the local Python/FFmpeg service, not just the frontend.',
   'The service copies the selected source locally. Maximum source size is 2 GB. Check source/caption warnings, monitor progress or cancel, and keep the tab open during transfer.',
-  'For portrait video, long dialogue captions page in source time. Inspect the result: long unbroken words, oversized type and simultaneous speakers can still exceed the safe area.',
+  'For portrait video, choose Auto fit or a maximum words-at-a-time count above the workspaces. Long dialogue captions page in source time; narrow frames may show fewer than your maximum. Inspect the result: long unbroken words, oversized type and simultaneous speakers can still exceed the safe area.',
   'Play the completed render and download MP4. Local results are retained for one hour. Changes made after a render starts need another render. JSON is the editable project, not a video.'
  ]],
  ['When something looks wrong','Troubleshooting and limits',null,[

@@ -142,6 +142,7 @@ export interface VideoInfo {
   language: string | null;
   source_hash: string | null;
   proxy_path: string | null;
+  portrait_words_per_page?:number;
   brightness?:number;contrast?:number;saturation?:number;
 }
 

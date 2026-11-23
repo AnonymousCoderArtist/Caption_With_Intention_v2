@@ -308,6 +308,7 @@ export class DemoClient {
     return this.ok(clone(this.project));
   }
   async updateProject(updates: Omit<Partial<Project>, "video"> & {video?: Partial<Project["video"]>}) {
+    const count=updates.video?.portrait_words_per_page;if(count!==undefined&&(!Number.isInteger(count)||count<0||count>50))return this.err('Portrait words per page must be an integer from 0 to 50.');
     if(updates.video)for(const [key,min,max,fallback] of [['brightness',-.5,.5,0],['contrast',.5,2,1],['saturation',0,2,1]] as const){const v=updates.video[key]??this.project.video[key]??fallback;if(!Number.isFinite(v)||v<min||v>max)return this.err('Video grade is outside the supported range.');}
     this.commit();
     if (updates.project_name !== undefined) this.project.project_name = updates.project_name;

@@ -34,7 +34,7 @@ try{
  await page.getByRole('button',{name:'Guide',exact:true}).click();
  await page.getByRole('button',{name:'3. Fix words and timing',exact:true}).click();
  await page.getByRole('button',{name:'Show text workspace',exact:true}).click();
- assert.equal(await page.locator('.app-shell').getAttribute('data-workspace'),'text');
+ assert.equal(await page.locator('.app-shell').getAttribute('data-workspace'),'Text');
  await page.keyboard.press('Escape');
  assert.equal(await page.locator('.editor-guide').count(),0);
  await page.getByRole('navigation',{name:'Editor workspaces'}).getByRole('button',{name:'Edit',exact:true}).click();
@@ -105,6 +105,9 @@ try{
  await page.getByRole('button',{name:'Close',exact:true}).click();await page.setViewportSize({width:1600,height:1050});
  await page.locator('input[aria-label="Open project JSON"]').setInputFiles(path.join(folder,'portrait.cwi.json'));
  await page.locator('input[aria-label="Import local video"]').setInputFiles(path.join(folder,'portrait.mp4'));
+ await page.getByRole('combobox',{name:'Portrait words at a time',exact:true}).selectOption('3');
+ await page.waitForFunction(()=>JSON.parse(localStorage.getItem('cwi-editor-local-v1')).video.portrait_words_per_page===3);
+
  await page.route('**/api/render/*/source',route=>route.abort());
  await page.getByTitle('Render captioned MP4 locally').click();await page.getByRole('button',{name:'Start local render',exact:true}).click();
  await page.getByText('Waiting for source',{exact:true}).waitFor();

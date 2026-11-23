@@ -73,5 +73,6 @@ export function parseProject(text: string): Project {
   if (![data.video.width,data.video.height,data.video.fps].every(v=>finite(v)&&v>0) || !finite(data.video.duration) || data.video.duration<0)
     throw new Error('Video dimensions, frame rate and duration must be valid.');
   for(const [key,min,max,fallback] of [['brightness',-.5,.5,0],['contrast',.5,2,1],['saturation',0,2,1]] as const){const v=data.video[key]??fallback;if(!finite(v)||v<min||v>max)throw new Error('Video grade is outside the supported range.');}
+  const count=data.video.portrait_words_per_page??0;if(!Number.isInteger(count)||count<0||count>50)throw new Error('Portrait words per page must be an integer from 0 to 50.');
   return {...emptyProject(),...data,events,speakers,video:{...defaults.video,...data.video}};
 }

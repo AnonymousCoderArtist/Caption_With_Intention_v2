@@ -530,3 +530,5 @@ Guide/portrait evidence and open gaps documented. Real18s540x960 analysisâ†’UIâ†
 ### Approved portrait word-count round
 
 User approved18:43IST. Portrait-only maximum1..50words per timed page,Auto fit default. Renderer/schema plus boundary tests published first.712Python/9skip,96frontend,build/full browser acceptance pass. No speaker rename or visual-speaker feature included.
+
+Reviewed portrait-only words-at-a-time selector,preview/JSON support and validation published. Width can require fewer than the maximum. Guide workspace-jump capitalization fixed. Landscape unaffected.

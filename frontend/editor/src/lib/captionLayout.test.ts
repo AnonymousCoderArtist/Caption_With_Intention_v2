@@ -15,3 +15,5 @@ it('pages narrow portrait captions in source time without losing words',()=>{
  const pages=captionLines(long,540,960);expect(pages.length).toBeGreaterThan(2);expect(pages.flat()).toEqual(words);
  for(const page of pages)expect(captionLines(long,540,960,page[0].start)).toEqual([page]);
 });
+
+it('limits portrait pages to requested maximum but leaves landscape alone',()=>{const e=createDemoProject().events[0];const words=Array.from({length:11},(_,i)=>({...e.words[0],text:'a',start:i,end:i+.8}));const caption={...e,words,text:words.map(w=>w.text).join(' ')};expect(captionLines(caption,540,960,undefined,3).map(p=>p.length)).toEqual([3,3,3,2]);expect(captionLines(caption,540,960,6,3)[0][0].start).toBe(6);expect(captionLines(caption,1920,1080,undefined,3)).toHaveLength(1);});
