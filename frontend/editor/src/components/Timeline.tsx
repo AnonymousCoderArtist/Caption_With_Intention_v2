@@ -1,5 +1,5 @@
 /** Editable timeline. Ruler seeks, caption bodies move, edge handles trim. */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CaptionEvent, Project } from '@/types/project';
 import { fmtTime, EVENT_TYPES, readableOn } from '@/lib/theme';
 import { Icon } from '@/lib/icons';
@@ -23,7 +23,8 @@ export function Timeline({project, selectedEventId, time, onSelectEvent, onScrub
   useEffect(()=>()=>{stopPointer.current?.();},[]);
   const contentW = Math.max(400, duration * ppx) + HEAD_W;
   const selected = project?.events.find(e => e.id === selectedEventId);
-  const ticks=timelineTicks(duration,ppx);
+  const ticks=useMemo(()=>timelineTicks(duration,ppx),[duration,ppx]);
+  const lanes=useMemo(()=>speakerLanes(project?.events??[],project?.speakers??[]),[project]);
   useEffect(()=>{
     const body=bodyRef.current;if(!body)return;
     const x=HEAD_W+time*ppx,padding=30;
@@ -63,22 +64,7 @@ export function Timeline({project, selectedEventId, time, onSelectEvent, onScrub
     stopPointer.current=cancel;
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', end); window.addEventListener('pointercancel', cancel);
   };
-  return <div className="timeline">
-    <div className="tl-head"><div className="tl-title"><Icon name="timeline" size={16}/> Timeline <span className="dim">{fmtTime(duration)}</span></div>
-      <div className="timeline-actions"><span className="tl-help">Drag to move · edges to trim</span>
-        <button className="subtle" title="Zoom out" onClick={() => setPpx(p => Math.max(10, p / 1.25))}><Icon name="zoom-out" size={15}/></button>
-        <button className="subtle" title="Zoom in" onClick={() => setPpx(p => Math.min(400, p * 1.25))}><Icon name="zoom-in" size={15}/></button>
-      </div>
-    </div>
-    <div className="tl-body" ref={bodyRef}><div style={{width: contentW, position: 'relative'}}>
-      <div className="tl-ruler" role="slider" aria-label="Timeline playhead" aria-valuemin={0} aria-valuemax={duration} aria-valuenow={time} tabIndex={0}
-        onKeyDown={e => { if (['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) {e.preventDefault(); e.stopPropagation(); onScrub(e.key === 'Home' ? 0 : e.key === 'End' ? duration : time + (e.key === 'ArrowRight' ? 1 : -1) / (project?.video.fps || 24));} }}
-        onPointerDown={e => { stopPointer.current?.();seek(e.clientX); const move = (p: PointerEvent) => seek(p.clientX); const end = () => { window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',end);window.removeEventListener('pointercancel',end);stopPointer.current=null; };stopPointer.current=end; window.addEventListener('pointermove',move);window.addEventListener('pointerup',end);window.addEventListener('pointercancel',end); }}>
-        <div className="tl-track-head" style={{width: HEAD_W}}>TIME</div>
-        {ticks.map(t => <div key={t} className="tl-tick major" style={{left: HEAD_W + t * ppx}}><span>{fmtTime(t)}</span></div>)}
-      </div>
-      <div className="tl-track" style={{height: 38}}><div className="tl-track-head" style={{width: HEAD_W}}>Video</div><div className="tl-lane source-lane" style={{width:contentW - HEAD_W}}>{mediaName || 'No video loaded. Import a local video to composite.'}</div></div>
-      {speakerLanes(project?.events??[],project?.speakers??[]).map(lane => <div key={lane.key} className="tl-track" style={{height: 38}}>
+  const trackRows=useMemo(()=>lanes.map(lane => <div key={lane.key} className="tl-track" style={{height: 38}}>
         <div className="tl-track-head" title={lane.label} style={{width:HEAD_W,color:lane.color}}>{lane.label}</div>
         <div className="tl-lane" style={{width:contentW - HEAD_W, position:'relative'}}>
           {lane.events.map(e => {
@@ -99,7 +85,23 @@ export function Timeline({project, selectedEventId, time, onSelectEvent, onScrub
             </div>;
           })}
         </div>
-      </div>)}
+      </div>),[lanes,project,selectedIds,selectedEventId,draft,ripple,ppx,contentW,onSelectEvent,onMoveSelection,onUpdateEvent,onScrub]);
+  return <div className="timeline">
+    <div className="tl-head"><div className="tl-title"><Icon name="timeline" size={16}/> Timeline <span className="dim">{fmtTime(duration)}</span></div>
+      <div className="timeline-actions"><span className="tl-help">Drag to move · edges to trim</span>
+        <button className="subtle" title="Zoom out" onClick={() => setPpx(p => Math.max(10, p / 1.25))}><Icon name="zoom-out" size={15}/></button>
+        <button className="subtle" title="Zoom in" onClick={() => setPpx(p => Math.min(400, p * 1.25))}><Icon name="zoom-in" size={15}/></button>
+      </div>
+    </div>
+    <div className="tl-body" ref={bodyRef}><div style={{width: contentW, position: 'relative'}}>
+      <div className="tl-ruler" role="slider" aria-label="Timeline playhead" aria-valuemin={0} aria-valuemax={duration} aria-valuenow={time} tabIndex={0}
+        onKeyDown={e => { if (['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) {e.preventDefault(); e.stopPropagation(); onScrub(e.key === 'Home' ? 0 : e.key === 'End' ? duration : time + (e.key === 'ArrowRight' ? 1 : -1) / (project?.video.fps || 24));} }}
+        onPointerDown={e => { stopPointer.current?.();seek(e.clientX); const move = (p: PointerEvent) => seek(p.clientX); const end = () => { window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',end);window.removeEventListener('pointercancel',end);stopPointer.current=null; };stopPointer.current=end; window.addEventListener('pointermove',move);window.addEventListener('pointerup',end);window.addEventListener('pointercancel',end); }}>
+        <div className="tl-track-head" style={{width: HEAD_W}}>TIME</div>
+        {ticks.map(t => <div key={t} className="tl-tick major" style={{left: HEAD_W + t * ppx}}><span>{fmtTime(t)}</span></div>)}
+      </div>
+      <div className="tl-track" style={{height: 38}}><div className="tl-track-head" style={{width: HEAD_W}}>Video</div><div className="tl-lane source-lane" style={{width:contentW - HEAD_W}}>{mediaName || 'No video loaded. Import a local video to composite.'}</div></div>
+      {trackRows}
       <div className="tl-track" style={{height: 30}}><div className="tl-track-head" style={{width:HEAD_W}}>Words</div><div className="tl-lane" style={{width:contentW - HEAD_W,position:'relative'}}>
         {selected?.words.map((w,i) => <button key={i} aria-label={`Seek to word ${w.text}`} className="tl-wordbar" title={`${w.text}: ${w.start.toFixed(2)}s`} onClick={() => onScrub(w.start)} style={{left:w.start * ppx,width:Math.max(3,(w.end-w.start)*ppx),background:w.color}}/>)}
       </div></div>

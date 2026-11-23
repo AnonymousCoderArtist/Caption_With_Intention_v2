@@ -84,6 +84,7 @@ export function App() {
   const [projectName, setProjectName] = useState("Untitled Project");
   const [mobilePanel, setMobilePanel] = useState<'events'|'preview'|'properties'>('preview');
   const [workspace,setWorkspace]=useState('Edit');
+  const [lightPreview,setLightPreview]=useState(false);
   const [activePanel, setActivePanel] = useState<ActivePanel>("events");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedIds,setSelectedIds]=useState<string[]>([]);
@@ -333,6 +334,7 @@ export function App() {
     let raf = 0;
     let last = performance.now();
     const tick = (now: number) => {
+      if(now-last<(lightPreview?1000/15:1000/30)){raf=requestAnimationFrame(tick);return;}
       const dt = (now - last) / 1000;
       last = now;
       setTime((t) => {
@@ -347,7 +349,7 @@ export function App() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, duration, mediaUrl]);
+  }, [playing, duration, mediaUrl,lightPreview]);
 
   const scrub = useCallback((t: number) => {
     auditionEnd.current=null;
@@ -456,7 +458,7 @@ export function App() {
         onExit={() => {if(renderActive.current){showToast('Finish or cancel the active render before leaving the editor.', 'error');return;} setPlaying(false); setStarted(false); }}
       />
 
-      <nav className="workspace-tabs" aria-label="Editor workspaces">{['Edit','Text','Color','Speakers','Export'].map(tab=><button key={tab} aria-pressed={workspace===tab} onClick={()=>{setWorkspace(tab);if(tab==='Speakers')setActivePanel('speakers');if(tab==='Text'||tab==='Edit')setActivePanel('events');if(tab==='Export')setShowRender(true);else if(!renderActive.current)setShowRender(false);}}>{tab}</button>)}</nav>
+      <nav className="workspace-tabs" aria-label="Editor workspaces">{['Edit','Text','Color','Speakers','Export'].map(tab=><button key={tab} aria-pressed={workspace===tab} onClick={()=>{setWorkspace(tab);if(tab==='Speakers')setActivePanel('speakers');if(tab==='Text'||tab==='Edit')setActivePanel('events');if(tab==='Export')setShowRender(true);else if(!renderActive.current)setShowRender(false);}}>{tab}</button>)}<label><input type="checkbox" checked={lightPreview} onChange={e=>setLightPreview(e.target.checked)}/> Lightweight preview (15 fps)</label></nav>
       {workspace==='Color'&&<section className="grade-panel" aria-label="Video color grading"><b>Video color</b>{(['brightness','contrast','saturation'] as const).map(key=><label key={key}>{key}<DraftNumber aria-label={`Video ${key}`} value={project?.video[key]??(key==='brightness'?0:1)} min={key==='brightness'?-.5:key==='contrast'?.5:0} max={key==='brightness'?.5:2} step={.05} onCommit={value=>act(()=>clientRef.current!.updateProject({video:{[key]:value}}))}/></label>)}<button onClick={()=>act(()=>clientRef.current!.updateProject({video:{brightness:0,contrast:1,saturation:1}}))}>Reset grade</button><small>Source video only. Captions stay unchanged. Browser grade is approximate; final MP4 uses FFmpeg.</small></section>}
       <Toolbar
         onUndo={undo}
@@ -543,7 +545,7 @@ export function App() {
               setSourceFile(file); setMediaName(file.name); setMediaUrl(URL.createObjectURL(file)); e.target.value = '';
             }} />
           {mediaName && <div className="media-label">{mediaName} · local preview only <button className="subtle" onClick={() => { setMediaUrl(null); setSourceFile(null); setMediaName(''); setMediaDuration(null); setPlaying(false); }}>Remove video</button></div>}
-          <PreviewMonitor project={project} time={time} fps={fps} mediaUrl={mediaUrl} playing={playing}
+          <PreviewMonitor lightweight={lightPreview} project={project} time={time} fps={fps} mediaUrl={mediaUrl} playing={playing}
             onMediaTime={setTime} onMediaDuration={setMediaDuration} onEnded={() => setPlaying(false)}
             selectedEventId={selectedEventId} onSelectEvent={selectEvent} />
           <Transport

@@ -57,12 +57,22 @@ try{
  await page.screenshot({path:path.join(folder,'review-complete.png')});
  assert.equal(await page.getByRole('button',{name:'Create event',exact:true}).count(),0);
  await page.getByLabel('Speaker review ·',{exact:false}).uncheck();
+ const workspaces=page.getByRole('navigation',{name:'Editor workspaces'});
+ await workspaces.getByRole('button',{name:'Text',exact:true}).click();
+ await page.locator('.word-properties summary').first().click();
+ await page.getByLabel('Word 1 character 2 color',{exact:true}).fill('#ff3366');
+ await workspaces.getByRole('button',{name:'Color',exact:true}).click();
+ const grade=page.getByRole('spinbutton',{name:'Video brightness',exact:true});await grade.fill('0.1');await grade.blur();
+ await page.getByLabel('Lightweight preview (15 fps)',{exact:true}).check();
+ await page.screenshot({path:path.join(folder,'workspace-color.png')});
+ await workspaces.getByRole('button',{name:'Edit',exact:true}).click();
+
  await page.getByRole('textbox',{name:'Caption notes',exact:true}).fill('Reviewed timing and speaker.');
- await page.getByRole('button',{name:'Speakers',exact:true}).click();
+ await page.locator('.panel-tabs').getByRole('button',{name:'Speakers',exact:true}).click();
  await page.getByRole('textbox',{name:'Name for s',exact:true}).fill('Reviewed speaker');
  const saved=page.waitForEvent('download');await page.getByRole('button',{name:'Save project',exact:true}).first().click();
  const download=await saved;const projectPath=path.join(folder,'saved.cwi.json');await download.saveAs(projectPath);
- const data=JSON.parse(await readFile(projectPath,'utf8'));assert.equal(data.events.length,1);assert.equal(data.events[0].words[1].start,1);assert.equal(data.events[0].speaker_reviewed,true);assert.equal(data.speakers[0].name,'Reviewed speaker');assert.equal(data.events[0].notes,'Reviewed timing and speaker.');
+ const data=JSON.parse(await readFile(projectPath,'utf8'));assert.equal(data.events.length,1);assert.equal(data.events[0].words[1].start,1);assert.equal(data.events[0].speaker_reviewed,true);assert.equal(data.speakers[0].name,'Reviewed speaker');assert.equal(data.events[0].notes,'Reviewed timing and speaker.');assert.equal(data.events[0].words[0].character_colors[1],'#ff3366');assert.equal(data.video.brightness,.1);
  await page.getByRole('button',{name:'Events',exact:true}).click();
  await page.waitForTimeout(400);await page.reload();await page.getByRole('button',{name:'Open editor',exact:true}).click();
  await page.locator('.ev-card').first().click();await page.getByRole('button',{name:'Reopen speaker review',exact:true}).waitFor();
@@ -159,7 +169,7 @@ try{
  const sessionPage=await browser.newPage();await sessionPage.goto(`http://127.0.0.1:${uiPort}`);
  await sessionPage.locator('input[aria-label="Open project JSON"]').setInputFiles(projectPath);await sessionPage.locator('.ev-card').first().click();
  await sessionPage.getByTitle('Copy style',{exact:true}).click();await sessionPage.getByText('Style copied',{exact:true}).waitFor();
- await sessionPage.getByRole('button',{name:'Speakers',exact:true}).click();await sessionPage.getByRole('button',{name:'Add',exact:true}).click();
+ await sessionPage.locator('.panel-tabs').getByRole('button',{name:'Speakers',exact:true}).click();await sessionPage.getByRole('button',{name:'Add',exact:true}).click();
  await sessionPage.getByPlaceholder('e.g. Woody').fill('Do not carry into next project');
  sessionPage.once('dialog',d=>d.accept());await sessionPage.locator('input[aria-label="Open project JSON"]').setInputFiles(projectPath);
  await sessionPage.getByPlaceholder('e.g. Woody').waitFor({state:'detached'});

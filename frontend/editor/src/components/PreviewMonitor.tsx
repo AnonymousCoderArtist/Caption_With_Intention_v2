@@ -64,9 +64,9 @@ function Caption({ event, project, time, height, onSelect, selected }: {
     })}
   </div>)}</div>;
 }
-export function PreviewMonitor({ project, time, fps, mediaUrl, playing = false,
+export function PreviewMonitor({ lightweight=false,project, time, fps, mediaUrl, playing = false,
   onMediaTime, onMediaDuration, onEnded, selectedEventId, onSelectEvent }: {
-  project: Project | null; time: number; fps: number; mediaUrl?: string | null; playing?: boolean;
+  lightweight?:boolean;project: Project | null; time: number; fps: number; mediaUrl?: string | null; playing?: boolean;
   onMediaTime?: (time: number) => void; onMediaDuration?: (duration: number) => void;
   onEnded?: () => void; selectedEventId?: string | null; onSelectEvent?: (id: string) => void;
 }) {
@@ -96,10 +96,11 @@ export function PreviewMonitor({ project, time, fps, mediaUrl, playing = false,
   useEffect(() => {
     if (!playing || !mediaUrl) return;
     let raf = 0;
-    const tick = () => { if (videoRef.current) onMediaTime?.(videoRef.current.currentTime); raf = requestAnimationFrame(tick); };
+    let last=0;
+    const tick = (now:number) => { if (videoRef.current&&now-last>=(lightweight?1000/15:1000/30)){onMediaTime?.(videoRef.current.currentTime);last=now;} raf = requestAnimationFrame(tick); };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, mediaUrl, onMediaTime]);
+  }, [playing, mediaUrl, onMediaTime,lightweight]);
   return <div className="monitor-wrap" ref={wrapRef}>
     <div className="program-monitor-title"><span>Program monitor</span><span>{mediaUrl ? 'Local video + captions' : 'Caption study · no source video'}</span></div>
     <div className="monitor" style={{ aspectRatio:ratio,width:monitorWidth||'100%',height:monitorWidth?monitorWidth/ratio:undefined,flexShrink:0 }}>

@@ -466,3 +466,7 @@ Source-video brightness, contrast and saturation now persist and reach final FFm
 ### Approved polish publication
 
 Per-visible-character spoken color overrides added to dialogue, overlap and custom captions, including final ASS output, JSON validation, reset and buffered color input. Replacing word text clears positional overrides; undo restores them. Per-character fonts/sizes and complex grapheme shaping are not promised.
+
+### Approved polish publication
+
+Lightweight preview uses15fps caption updates instead of30fps. Timeline packing/tracks are memoized and offscreen cards use rendering containment. Expanded acceptance covers workspaces, character color persistence and grading.4xCPU-throttled smoke passed; no proxy transcode or real-device certification.
