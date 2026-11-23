@@ -278,3 +278,8 @@ Replaced automatic save banners with a tiny topbar icon; settings/recovery only 
 ### Guide and portrait recheck, approved publication
 
 Optional8-topic in-app guide added,never auto-opens. Extended9:16 testing found detached boxes/overwrapped long captions. Proposed portrait-only timed one-line pages fix that fixture while changing full-sentence read-ahead; landscape unchanged. Real18s portrait analysis/import/UI render/play/download and synthetic long/overlap frames inspected.711Python/9skip,94frontend,build/full acceptance,zero dependency-audit findings. Overlap blocks can still exceed the lower20% safe area,ASR/speaker errors remain. See docs/GUIDE_AND_PORTRAIT_RECHECK.md. Approved for publication at18:34IST; do not claim everything complete or fully optimized.
+
+
+### Portrait words-at-a-time setting, approved
+
+Auto fit remains the default. Portrait-only selector offers a maximum1..50words per page,including3/5/10. Width can force fewer words,never more than the maximum. Page changes follow first-word onsets; final page ends at the caption end. Stored project includes the count; preview and final render use it. Landscape ignores it. Count validation rejects fractional/out-of-range values. A guide workspace-jump capitalization bug found in this round was also fixed.712Python/9skip,96frontend,build/full browser acceptance pass. Actual18s portrait UI render with3words selected inspected in preview and MP4. Approved18:43IST;long words/manual size/overlap safe-area limits remain.

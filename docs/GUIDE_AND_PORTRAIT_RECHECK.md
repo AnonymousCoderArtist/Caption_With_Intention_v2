@@ -29,3 +29,8 @@ This changes read-ahead: the entire original long sentence is no longer visible 
 This is a capable local editor and automation project, not everything complete or certified optimized. Remaining work includes exact reference-film parity, overlapping recognition/identity accuracy, multi-hour actual-model tests on weak hardware, hard resource caps/OOM recovery, editor-integrated analysis jobs, complex scripts/font fallback, complete sidecar UI, installer/model manager and a license inventory. Native OS disk-file chooser permission remains manually unverified. The guide and tests must not be used to imply those items are done.
 
 Official design references: https://captionwithintention.org and https://download.captionwithintention.org/Caption-With-Intention_Design-System_V1.0.pdf . Work-area guidance is in section2.4.3; actual visual reference remains the official film. Caption With Intention is its original creators' design system. Lokesh built the automation.
+
+
+### Portrait words-at-a-time setting, approved
+
+Auto fit remains the default. Portrait-only selector offers a maximum1..50words per page,including3/5/10. Width can force fewer words,never more than the maximum. Page changes follow first-word onsets; final page ends at the caption end. Stored project includes the count; preview and final render use it. Landscape ignores it. Count validation rejects fractional/out-of-range values. A guide workspace-jump capitalization bug found in this round was also fixed.712Python/9skip,96frontend,build/full browser acceptance pass. Actual18s portrait UI render with3words selected inspected in preview and MP4. Approved18:43IST;long words/manual size/overlap safe-area limits remain.
