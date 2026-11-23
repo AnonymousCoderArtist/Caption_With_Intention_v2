@@ -41,6 +41,7 @@ import logging
 import math
 import re
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -272,7 +273,7 @@ def _probe_dimensions(source_path: Path) -> tuple[int, int]:
         from engine.media.probe import probe_video
 
         info = probe_video(str(source_path))
-        return int(info.get("width", 1920)), int(info.get("height", 1080))
+        return int(info.get("display_width", info.get("width", 1920))), int(info.get("display_height", info.get("height", 1080)))
     except Exception:  # noqa: BLE001 - probe failure falls back to 1080p
         return 1920, 1080
 
@@ -325,12 +326,17 @@ class CwiRenderer:
         font_path: Optional[str | Path] = None,
         scale: Optional[tuple[int, int]] = None,
         preserve_audio: bool = True,
+        audio_codec: str = "copy",
     ) -> None:
         self.project = project
         self.font_path = Path(font_path) if font_path else None
         self._advances: Optional[dict[str, float]] = None
+        self._ass_em_scale = 1.0
         self.scale = scale
         self.preserve_audio = preserve_audio
+        if audio_codec not in {"copy", "aac"}:
+            raise ValueError("Audio codec must be copy or aac")
+        self.audio_codec = audio_codec
 
     def render(
         self,
@@ -359,25 +365,18 @@ class CwiRenderer:
             len(self.project.events),
         )
 
-        # Generate styled ASS subtitles
-        ass_path = self._generate_ass(source_path)
-
-        # Build FFmpeg command to burn ASS into video
-        cmd = self._build_ffmpeg_command(source_path, ass_path, output_path)
-
-        logger.info("Running FFmpeg: %s", " ".join(cmd[:6]) + "...")
-        run_ffmpeg(cmd, timeout=600)
-
-        # Clean up temporary ASS file
-        try:
-            ass_path.unlink()
-        except OSError:
-            pass
+        # Stage captions/fonts away from the source folder. Concurrent renders
+        # cannot overwrite another caption file or require source-folder writes.
+        with tempfile.TemporaryDirectory(prefix="cwi-render-") as temporary:
+            ass_path = self._generate_ass(source_path, output_dir=Path(temporary))
+            cmd = self._build_ffmpeg_command(source_path, ass_path, output_path)
+            logger.info("Running FFmpeg: %s", " ".join(cmd[:6]) + "...")
+            run_ffmpeg(cmd, timeout=600)
 
         logger.info("Render complete: %s", output_path)
         return output_path
 
-    def _generate_ass(self, source_path: Path) -> Path:
+    def _generate_ass(self, source_path: Path, output_dir: Optional[Path] = None) -> Path:
         """Generate a CWI-styled ASS subtitle file.
 
         Args:
@@ -404,7 +403,7 @@ class CwiRenderer:
             ass_content, screen_width, screen_height
         )
 
-        ass_path = source_path.parent / "captions.cwi.ass"
+        ass_path = (output_dir or source_path.parent) / "captions.cwi.ass"
         ass_path.write_text(ass_content, encoding="utf-8")
         return ass_path
 
@@ -542,6 +541,47 @@ class CwiRenderer:
                         )
                     )
 
+        # Per-event inspector box overrides must reach the final render too.
+        by_id = {event.id: event for event in self.project.events}
+        for line in events:
+            event = by_id.get(line.get("parent_event_id"))
+            if event is not None and line.get("style") == "CwiBox" and (event.style.box_opacity != 0.9 or event.style.box_padding != 10):
+                # BorderStyle=3 draws one translucent box per override run,
+                # causing darker overlap seams. A single vector rectangle
+                # keeps custom-opacity backgrounds uniform.
+                base = max(1, round(screen_height * DEFAULT_BASELINE_SIZE_PCT / 100.0))
+                padding = event.style.box_padding
+                plain = re.sub(re.escape(_MARK_OPEN) + r"\d+" + re.escape(_MARK_CLOSE), "", line["text"])
+                tags = line.get("span_tags", [])
+                chunks = re.split(re.escape(_MARK_OPEN) + r"\d+" + re.escape(_MARK_CLOSE), line["text"])[1:]
+                width0 = width1 = padding * 2.0
+                if not chunks:
+                    width0 += self._estimate_span_width(plain, base, 100) * self._ass_em_scale
+                    width1 = width0
+                for chunk, tag in zip(chunks, tags):
+                    scales = re.findall(r"\\fscx([0-9.]+)", tag)
+                    scale = float(scales[0]) if scales else 100.0
+                    advance = self._estimate_span_width(chunk, base, scale) * self._ass_em_scale
+                    width0 += advance
+                    width1 += advance
+                    spacings = re.findall(r"\\fsp([0-9.]+)", tag)
+                    if spacings:
+                        width0 += float(spacings[0]) * len(chunk) * self._ass_em_scale * scale / 100
+                        width1 += float(spacings[-1]) * len(chunk) * self._ass_em_scale * scale / 100
+                box_h = round(base + padding * 2)
+                box_w = max(1, round(width0))
+                alpha = _opacity_to_alpha(event.style.box_opacity)
+                y = screen_height - line.get("margin_v", round(screen_height * .05))
+                duration_ms = max(1, round((line["end"] - line["start"]) * 1000))
+                drawing = (f"\\an2\\pos({screen_width / 2:.1f},{y})\\p1\\bord0\\shad0"
+                           f"\\1c&H000000&\\1a&H{alpha:02X}&\\fscx100\\fscy100")
+                if abs(width1 - width0) > .1:
+                    drawing += f"\\t(0,{duration_ms},\\fscx{width1 / width0 * 100:.3f})"
+                line["tags"] = {"box": drawing}
+                line["span_tags"] = []
+                line["style"] = "Default"
+                line["type"] = "box"
+                line["text"] = f"m 0 0 l {box_w} 0 l {box_w} {box_h} l 0 {box_h}"
         return events
 
     def _compose_word_spans(
@@ -594,22 +634,19 @@ class CwiRenderer:
 
         spans: list[dict] = []
         for i, word in enumerate(words):
-            spans.append(
-                {
-                    "text": span_texts[i],
-                    "size_px": max(1, round(screen_height * (
-                        DEFAULT_BASELINE_SIZE_PCT
-                        if word.source_model and word.size_pct < (
-                            DEFAULT_BASELINE_SIZE_PCT * AUTO_EMPHASIS_SIZE_RATIO
-                        ) else word.size_pct
-                    ) / 100.0)),
-                    "bold": "\\b1" if word.weight >= 700 else "\\b0",
-                    "width": (100 if word.source_model and abs(word.width - 100) < 15
-                              else int(word.width)),
-                    "word": word,
-                    "index": i,
-                }
-            )
+            size_pct = event.style.size_pct if event.style.size_mode == "manual" else word.size_pct
+            if event.style.size_mode != "manual" and word.source_model and not word.manual_override and size_pct < DEFAULT_BASELINE_SIZE_PCT * AUTO_EMPHASIS_SIZE_RATIO:
+                size_pct = DEFAULT_BASELINE_SIZE_PCT
+            weight = event.style.weight if event.style.weight_mode == "manual" else word.weight
+            width = event.style.width if event.style.width_mode == "manual" else word.width
+            if event.style.width_mode != "manual" and word.source_model and not word.manual_override and abs(width - 100) < 15:
+                width = 100
+            spans.append({
+                "text": span_texts[i],
+                "size_px": max(1, round(screen_height * size_pct / 100.0)),
+                "bold": "\\b1" if weight >= 700 else "\\b0",
+                "width": int(width), "word": word, "index": i,
+            })
         return sentence, spans
 
     def _geometry_tags(self, span: dict) -> str:
@@ -877,6 +914,11 @@ class CwiRenderer:
             if self.font_path and self.font_path.exists():
                 font = TTFont(str(self.font_path))
                 upem = font["head"].unitsPerEm
+                # libass requests REAL_DIM after adopting OS/2 Win metrics.
+                # CSS/em advances must be normalized for vector geometry.
+                os2 = font["OS/2"]
+                real_height = os2.usWinAscent + os2.usWinDescent
+                self._ass_em_scale = upem / real_height if real_height else 1.0
                 cmap = font.getBestCmap()
                 hmtx = font["hmtx"]
                 self._advances = {
@@ -944,8 +986,16 @@ class CwiRenderer:
         if not second:
             return [(event, 0)]
 
-        text1 = " ".join(w.text for w in first)
-        text2 = " ".join(w.text for w in second)
+        text1 = "".join(span["text"] for span in composed[:split]).strip()
+        remaining = "".join(span["text"] for span in composed[split:])
+        # Separators precede each token in composed spans. Keep boundary
+        # punctuation with the previous line instead of leading the next.
+        boundary = remaining.find(second[0].text)
+        if boundary >= 0:
+            text1 += remaining[:boundary].rstrip()
+            text2 = remaining[boundary:].strip()
+        else:
+            text2 = remaining.strip()
         child1 = event.model_copy(update={"words": first, "text": text1})
         child2 = event.model_copy(update={"words": second, "text": text2})
         # Stacking distance must clear the FULL rendered box height
@@ -1133,7 +1183,6 @@ class CwiRenderer:
         # read-ahead (user rule 2026-11-22: "the italic bold will appear
         # when it's spoken, not from earlier"). Bold already follows the
         # same rule via the read-ahead baseline geometry.
-        ital = "\\i1" if italic_tag else ""
         for start, end, cur_word, cur_syl in intervals:
             if end - start <= 0:
                 continue
@@ -1163,7 +1212,8 @@ class CwiRenderer:
                     box_w = self._estimate_span_width(span["text"], box_base_fs, 100)
                     return max(0.0, (text_w - box_w) / max(1, len(span["text"])))
                 fsp0, fsp1 = box_spacing(fs0), box_spacing(fs1)
-                box_tag = _baseline_geometry() + f"\\fsp{fsp0:.3f}"
+                width = span["width"] if (not pulsing or span["word"].start <= start < span["word"].end) else 100
+                box_tag = _baseline_geometry() + f"\\fscx{width}\\fsp{fsp0:.3f}"
                 if abs(fsp1 - fsp0) > 0.001:
                     box_tag += f"\\t(0,{max(1, round(duration_ms))},\\fsp{fsp1:.3f})"
                 _emit_span(box_span_tags, box_parts, span["text"], box_tag)
@@ -1186,6 +1236,7 @@ class CwiRenderer:
                     ]
 
             for i, span in enumerate(spans):
+                span_ital = "\\i1" if italic_tag or event.style.italic or span["word"].italic else ""
                 if not pulsing:
                     # Sync disabled: static intonation geometry (fallback).
                     _emit(span["text"], white + self._geometry_tags(span))
@@ -1202,6 +1253,8 @@ class CwiRenderer:
                     fs1 = _spoken_size_at(span, box_base_fs, end)
                     bold = span["bold"] if span["word"].start <= start < span["word"].end else "\\b0"
                     size_tags = f"\\fs{fs0:.3f}{bold}\\frz0"
+                    if span["word"].opacity < 1:
+                        size_tags += f"\\alpha&H{_opacity_to_alpha(span['word'].opacity):02X}&"
                     if span["width"] != 100 and span["word"].start <= start < span["word"].end:
                         size_tags += f"\\fscx{span['width']}"
                     if abs(fs1 - fs0) > 0.001:
@@ -1225,19 +1278,19 @@ class CwiRenderer:
                             )
                             t_rel = (t_on - start) * 1000.0
                             if t_on < start - 1e-9:
-                                tag = f"\\c{speaker_color}&{ital}" + size_tags
+                                tag = f"\\c{speaker_color}&{span_ital}" + size_tags
                             elif t_rel >= duration_ms:
                                 tag = white + size_tags
                             else:
                                 tag = white + size_tags + (
                                     f"\\t({int(t_rel)},"
                                     f"{int(t_rel + LETTER_SWEEP_FADE_MS)},"
-                                    f"\\c{speaker_color}&\\alpha&H00&{ital})"
+                                    f"\\c{speaker_color}&\\alpha&H00&{span_ital})"
                                 )
                         elif cur_word is None or i > cur_word:
                             tag = white + size_tags
                         else:
-                            tag = f"\\c{speaker_color}&{ital}" + size_tags
+                            tag = f"\\c{speaker_color}&{span_ital}" + size_tags
                         th0 = math.degrees(e0 / org_distance)
                         th1 = math.degrees(e1 / org_distance)
                         if abs(e0) > 1e-6 or abs(e1) > 1e-6:
@@ -1310,6 +1363,8 @@ class CwiRenderer:
             profiles = profile.get("profiles", {})
             profile_config = profiles.get(profile_name, {})
             toggles = profile_config.get("toggles", {})
+            if not isinstance(toggles, dict):
+                return default_toggles
             # Merge: profile toggles override defaults
             merged = {**default_toggles, **toggles}
             return merged
@@ -1762,11 +1817,15 @@ class CwiRenderer:
         fontsdir_opt = f":fontsdir={fontsdir}" if fontsdir else ""
         if self.scale:
             vf_filter = (
-                f"subtitles={ass_path}{fontsdir_opt},"
+                f"subtitles='{self._ass_escape_filter_path(ass_path)}'{fontsdir_opt},"
                 f"scale={self.scale[0]}:{self.scale[1]}"
             )
         else:
-            vf_filter = f"subtitles={ass_path}{fontsdir_opt}"
+            vf_filter = f"subtitles='{self._ass_escape_filter_path(ass_path)}'{fontsdir_opt}"
+        if output_path.suffix.lower() == ".mp4":
+            # H264/yuv420p requires even dimensions. Preserve every source
+            # pixel and caption coordinate by padding only right/bottom.
+            vf_filter += ",pad=ceil(iw/2)*2:ceil(ih/2)*2:0:0"
         cmd = [
             "ffmpeg",
             "-y",
@@ -1777,7 +1836,11 @@ class CwiRenderer:
         ]
 
         if self.preserve_audio:
-            cmd.extend(["-c:a", "copy"])
+            cmd.extend(["-c:a", self.audio_codec])
+        else:
+            cmd.append("-an")
+        if output_path.suffix.lower() == ".mp4":
+            cmd.extend(["-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart"])
 
         cmd.append(str(output_path))
         return cmd

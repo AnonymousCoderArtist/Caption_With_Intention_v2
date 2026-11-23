@@ -99,3 +99,23 @@ class TestProbeEmbeddedCaptions:
         _create_test_video(video_path, duration=1)
         result = probe_embedded_captions(video_path)
         assert isinstance(result, list)
+
+
+def test_rotation_exposes_display_dimensions_without_changing_coded_size():
+    from engine.media.probe import parse_probe_data
+    info=parse_probe_data({'streams':[{'codec_type':'video','width':1280,'height':720,'side_data_list':[{'rotation':90}]}],'format':{'duration':'1'}})
+    assert (info['width'],info['height'])==(1280,720)
+    assert (info['display_width'],info['display_height'])==(720,1280)
+
+
+def test_audio_only_without_duration_does_not_crash():
+    from engine.media.probe import parse_probe_data
+    info=parse_probe_data({'streams':[{'codec_type':'audio'}]})
+    assert info['duration']==0
+
+
+def test_invalid_rotation_metadata_preserves_probe():
+    from engine.media.probe import parse_probe_data
+    for rotation in ['unknown','nan',None]:
+        info=parse_probe_data({'streams':[{'codec_type':'video','width':640,'height':480,'tags':{'rotate':rotation}}]})
+        assert (info['display_width'],info['display_height'])==(640,480)

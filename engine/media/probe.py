@@ -106,6 +106,24 @@ def parse_probe_data(data: dict) -> dict:
     fps = _parse_fps(video_stream) if video_stream else 0.0
     video_codec = video_stream.get("codec_name") if video_stream else None
 
+    rotation = 0.0
+    try:
+        if video_stream:
+            for side in video_stream.get("side_data_list", []):
+                if "rotation" in side:
+                    rotation = float(side["rotation"])
+                    break
+            else:
+                rotation = float(video_stream.get("tags", {}).get("rotate", 0))
+    except (TypeError, ValueError):
+        rotation = 0.0
+    import math
+    if not math.isfinite(rotation):
+        rotation = 0.0
+    display_width, display_height = width, height
+    if round(rotation) % 180 == 90:
+        display_width, display_height = height, width
+
     # Audio info
     audio_codec = audio_stream.get("codec_name") if audio_stream else None
     sample_rate = int(audio_stream.get("sample_rate", 0)) if audio_stream else None
@@ -117,7 +135,7 @@ def parse_probe_data(data: dict) -> dict:
     )
 
     # Duration
-    duration_str = format_data.get("duration") or video_stream.get("duration")
+    duration_str = format_data.get("duration") or (video_stream or {}).get("duration")
     duration = float(duration_str) if duration_str else 0.0
 
     # Pixel aspect ratio (ffprobe uses "W:H" format, e.g., "1:1")
@@ -138,6 +156,9 @@ def parse_probe_data(data: dict) -> dict:
     return {
         "width": width,
         "height": height,
+        "display_width": display_width,
+        "display_height": display_height,
+        "rotation": rotation,
         "fps": fps,
         "duration": duration,
         "video_codec": video_codec,

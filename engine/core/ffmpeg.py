@@ -43,7 +43,7 @@ def run_ffmpeg(cmd: list[str], timeout: int = 600) -> subprocess.CompletedProces
 
     if result.returncode != 0:
         raise RuntimeError(
-            f"FFmpeg failed: {result.stderr.strip()[:500]}"
+            f"FFmpeg failed: {result.stderr.strip()[-1500:]}"
         )
     return result
 
