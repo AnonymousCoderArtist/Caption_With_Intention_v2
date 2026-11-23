@@ -975,9 +975,10 @@ class CwiRenderer:
             # read-ahead sentence on a second line. Page at word boundaries,
             # retaining absolute word times and the original input project.
             groups = []
+            word_limit = self.project.video.portrait_words_per_page
             begin, used = 0, 0.0
             for i, width in enumerate(widths):
-                if i > begin and used + width > available:
+                if i > begin and (used + width > available or (word_limit and i - begin >= word_limit)):
                     groups.append((begin, i))
                     begin, used = i, 0.0
                 used += width

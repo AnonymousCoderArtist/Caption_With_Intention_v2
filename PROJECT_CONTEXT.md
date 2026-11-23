@@ -526,3 +526,7 @@ User approved at18:34IST,portrait adaptation reconfirmed18:36IST. Optional8-topi
 Portrait-only source-time one-line paging fixes detached boxes/overwrapped long read-ahead sentences. Preview matches page selection. Landscape unchanged. This is an approved adaptation,not certified official portrait behavior. Overlap/large manual typography can exceed safe area and preflight warns.
 
 Guide/portrait evidence and open gaps documented. Real18s540x960 analysis→UI→MP4 checked;synthetic60frame safe-area check passed for ordinary single-speaker paging. Complex overlap still exceeds nominal lower20%. Nothing claims full completion or weak-hardware certification.
+
+### Approved portrait word-count round
+
+User approved18:43IST. Portrait-only maximum1..50words per timed page,Auto fit default. Renderer/schema plus boundary tests published first.712Python/9skip,96frontend,build/full browser acceptance pass. No speaker rename or visual-speaker feature included.

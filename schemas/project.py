@@ -151,6 +151,7 @@ class VideoInfo(BaseModel):
     language: Optional[str] = None
     source_hash: Optional[str] = None
     proxy_path: Optional[str] = None
+    portrait_words_per_page: int = Field(default=0, ge=0, le=50, strict=True)
     brightness: float = Field(default=0.0, ge=-0.5, le=0.5)
     contrast: float = Field(default=1.0, ge=0.5, le=2.0)
     saturation: float = Field(default=1.0, ge=0.0, le=2.0)
