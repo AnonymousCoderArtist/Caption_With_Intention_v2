@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { DraftText } from "./DraftText";
 import type { Speaker } from "@/types/project";
 import { MAIN_COLORS, SUPPORT_COLORS } from "@/lib/theme";
 import { Icon } from "@/lib/icons";
@@ -15,6 +16,7 @@ interface SpeakerPanelProps {
   onDelete: (id: string) => void;
   onColor: (id: string, color: string) => void;
   onCategory: (id: string, category: string) => void;
+  onUpdate: (id: string, updates: Partial<Speaker>) => void;
 }
 
 function SwatchStrip({
@@ -81,6 +83,7 @@ export function SpeakerPanel({
   onDelete,
   onColor,
   onCategory,
+  onUpdate,
 }: SpeakerPanelProps) {
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
@@ -227,7 +230,7 @@ export function SpeakerPanel({
                     gap: 6,
                   }}
                 >
-                  {s.name}
+                  <DraftText aria-label={`Name for ${s.id}`} value={s.name} onCommit={name=>onUpdate(s.id,{name})} style={{width:'100%',minWidth:0,fontSize:12,padding:4}}/>
                   {s.off_camera && (
                     <span
                       style={{
@@ -244,6 +247,7 @@ export function SpeakerPanel({
                     </span>
                   )}
                 </div>
+                <label className="speaker-offcamera"><input type="checkbox" checked={s.off_camera} onChange={e=>onUpdate(s.id,{off_camera:e.target.checked})}/>Off-camera</label>
                 <div style={{ marginTop: 3 }}>
                   <select
                     value={s.category}
@@ -268,11 +272,9 @@ export function SpeakerPanel({
 
               <button
                 className="icon-btn sm"
-                style={{ opacity: 0, color: "var(--text-400)" }}
+                style={{ opacity: 1, color: "var(--text-400)" }}
                 title="Remove speaker"
                 onClick={() => onDelete(s.id)}
-                onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
-                onMouseLeave={(e) => (e.currentTarget.style.opacity = "0")}
               >
                 <Icon name="trash" size={13} />
               </button>

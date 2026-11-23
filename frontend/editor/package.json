@@ -1,21 +1,21 @@
 {
   "name": "cwi-editor",
   "version": "0.1.0",
-  "description": "Caption With Intention — Manual Editor UI",
+  "description": "Caption With Intention \u2014 Manual Editor UI",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --proxy-config vite.proxy.config.json",
-    "dev:api": "python ../../engine/editor/server.py",
-    "start": "python ../../engine/editor/start.py",
+    "dev": "vite",
+    "dev:api": "uv run --project ../.. python ../../engine/editor/server.py",
+    "start": "uv run --project ../.. python ../../engine/editor/start.py",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "echo 'lint skipped (no eslint config)'",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
-    "gsap": "^3.15.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-icons": "^5.2.1"
@@ -23,9 +23,13 @@
   "devDependencies": {
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
+    "@vitejs/plugin-react": "^5.2.0",
+    "playwright": "^1.65.1",
     "typescript": "^5.5.3",
-    "vite": "^5.3.4",
-    "vitest": "^1.6.0"
+    "vite": "^7.3.8",
+    "vitest": "^4.1.12"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
   }
 }

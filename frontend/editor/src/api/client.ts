@@ -45,6 +45,20 @@ export class EditorApiClient {
     return this.transport("get_project");
   }
 
+  async updateProject(updates: Omit<Partial<Project>, "video"> & {video?: Partial<Project["video"]>}): Promise<ApiResponse<Project>> {
+    return this.transport("update_project", updates);
+  }
+
+  async assignSpeakerEvents(eventIds:string[],speakerId:string|null,reviewed=true):Promise<ApiResponse<Project>> {
+    return this.transport('assign_speaker_events',{event_ids:eventIds,speaker_id:speakerId,reviewed});
+  }
+  async structureEvents(eventIds:string[],operation:'split'|'merge',at=0):Promise<ApiResponse<Project>> {
+    return this.transport('structure_events',{event_ids:eventIds,operation,at});
+  }
+  async batchEvents(eventIds:string[],operation:'move'|'delete',delta=0,ripple=false):Promise<ApiResponse<Project>> {
+    return this.transport('batch_events',{event_ids:eventIds,operation,delta,ripple});
+  }
+
   async getProjectSummary(): Promise<ApiResponse<Record<string, any>>> {
     return this.transport("get_project_summary");
   }
@@ -221,6 +235,10 @@ export class EditorApiClient {
   }
 
   // ─── Typography ─────────────────────────────────────────
+
+  async setStyle(eventId: string, style: Partial<Style>): Promise<ApiResponse<CaptionEvent>> {
+    return this.transport("set_style", {event_id:eventId,...style});
+  }
 
   async setTypography(
     eventId: string,

@@ -1,12 +1,13 @@
 import type { CaptionEvent, Speaker } from "@/types/project";
 import { fmtTime, EVENT_TYPES } from "@/lib/theme";
+import {speakerReviewReasons} from "@/lib/speakerReview";
 import { Icon } from "@/lib/icons";
 
 interface EventItemProps {
   event: CaptionEvent;
   speakers: Speaker[];
   isSelected: boolean;
-  onSelect: () => void;
+  onSelect: (additive?:boolean) => void;
   onDelete: () => void;
 }
 
@@ -24,16 +25,16 @@ export function EventItem({
     <div
       className={`card ev-card ${isSelected ? "selected" : ""}`}
       style={{ "--ev-color": type.color } as React.CSSProperties}
-      onClick={onSelect}
+      onClick={e=>onSelect(e.shiftKey||e.ctrlKey||e.metaKey)}
       role="button"
-      tabIndex={0}
-      onKeyDown={(e) => e.key === "Enter" && onSelect()}
+      tabIndex={0} aria-pressed={isSelected}
+      onKeyDown={e=>{if(e.target!==e.currentTarget)return;if(e.key==='Enter'||e.code==='Space'){e.preventDefault();e.stopPropagation();onSelect(e.shiftKey||e.ctrlKey||e.metaKey);}}}
     >
-      <div className="ev-accent" />
+      {speakerReviewReasons(event,speakers).length>0&&<span className="speaker-warning">Check speaker</span>}
 
       {/* top row */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
-        <span className="badge" style={{ background: `${type.color}1f`, color: type.color }}>
+        <span className="ev-kind">
           {type.label}
         </span>
         {event.off_camera && (
@@ -106,15 +107,6 @@ export function EventItem({
               color: "var(--text-300)",
             }}
           >
-            <span
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: speaker.color,
-                boxShadow: `0 0 6px ${speaker.color}88`,
-              }}
-            />
             {speaker.name}
           </span>
         )}

@@ -11,6 +11,7 @@ interface ToolbarProps {
   onPasteStyle: () => void;
   onExport: () => void;
   onSettings: () => void;
+  onRender: () => void;
 }
 
 export function Toolbar({
@@ -24,6 +25,7 @@ export function Toolbar({
   onPasteStyle,
   onExport,
   onSettings,
+  onRender,
 }: ToolbarProps) {
   const TBtn = ({
     icon,
@@ -54,7 +56,6 @@ export function Toolbar({
 
       <div className="toolbar-separator" />
 
-      <TBtn icon="cursor" onClick={onSelectAll} title="Select all events" />
       <TBtn icon="deselect" onClick={onClearSelection} title="Clear selection" />
 
       <div className="toolbar-separator" />
@@ -66,17 +67,18 @@ export function Toolbar({
 
       <span className="toolbar-hint">
         <Icon name="sparkle" size={14} />
-        Every property is editable · fully undoable
+        Select a caption to edit
       </span>
 
       <div className="toolbar-spacer" />
 
-      <button className="ghost" onClick={onSettings} title="Settings" style={{ padding: "7px 12px" }}>
+      <button className="ghost" onClick={onSettings} title="Sequence settings and shortcuts" style={{ padding: "7px 12px" }}>
         <Icon name="settings" size={15} />
       </button>
-      <button className="primary" onClick={onExport} title="Export" style={{ padding: "7px 16px", fontSize: 12 }}>
+      <button className="primary" onClick={onRender} title="Render captioned MP4 locally"><Icon name="film" size={15}/> Render video</button>
+      <button className="ghost" onClick={onExport} title="Download project JSON" style={{ padding: "7px 16px", fontSize: 12 }}>
         <Icon name="export" size={15} />
-        Export
+        Save project
       </button>
     </div>
   );

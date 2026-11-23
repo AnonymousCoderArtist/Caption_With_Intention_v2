@@ -1,308 +1,109 @@
-/** Pro multi-track timeline: ruler · video · audio · captions · words. */
-import { useMemo, useState } from "react";
-import type { CaptionEvent, Project } from "@/types/project";
-import { fmtTime, EVENT_TYPES, prng, readableOn } from "@/lib/theme";
-import { Icon } from "@/lib/icons";
-
-const HEAD_W = 132;
-
-interface TimelineProps {
-  project: Project | null;
-  selectedEventId: string | null;
-  time: number;
-  onSelectEvent: (id: string) => void;
-  onScrub: (t: number) => void;
+/** Editable timeline. Ruler seeks, caption bodies move, edge handles trim. */
+import { useEffect, useRef, useState } from 'react';
+import type { CaptionEvent, Project } from '@/types/project';
+import { fmtTime, EVENT_TYPES, readableOn } from '@/lib/theme';
+import { Icon } from '@/lib/icons';
+import { speakerLanes,timelineTicks } from '@/lib/timelineLayout';
+const HEAD_W = 100;
+interface Props {
+  project: Project | null; selectedEventId: string | null; selectedIds?:string[]; time: number;
+  duration?: number; mediaName?: string;
+  onSelectEvent: (id: string,additive?:boolean) => void; onScrub: (t: number) => void;
+  onUpdateEvent: (id: string, updates: Partial<CaptionEvent>) => void;
+  onMoveSelection?:(ids:string[],delta:number)=>void;
+  ripple?:boolean;
 }
-
-export function Timeline({
-  project,
-  selectedEventId,
-  time,
-  onSelectEvent,
-  onScrub,
-}: TimelineProps) {
-  const duration = project?.video.duration ?? 0;
-  const [ppx, setPpx] = useState(() =>
-    duration > 0 ? Math.max(30, Math.min(140, 1100 / duration)) : 60,
-  );
-
-  const contentW = duration * ppx + HEAD_W;
-
-  // waveform bars (deterministic)
-  const wave = useMemo(() => {
-    const n = 96;
-    const arr: number[] = [];
-    for (let i = 0; i < n; i++) {
-      // shape the waveform around where dialogue happens
-      const t = (i / n) * duration;
-      const near = project?.events.some(
-        (e) => t >= e.start - 0.5 && t <= e.end + 0.3,
-      )
-        ? 0.7
-        : 0.25;
-      arr.push(0.15 + prng(`wave${i}`) * near);
-    }
-    return arr;
-  }, [project, duration]);
-
-  const tickStep = ppx >= 60 ? 1 : ppx >= 22 ? 5 : 10;
-  const ticks: { t: number; major: boolean }[] = [];
-  if (duration > 0) {
-    for (let t = 0; t <= duration; t += tickStep) {
-      ticks.push({ t, major: t % (tickStep * 5) === 0 || t === 0 });
-    }
-  }
-
-  const speakerColor = (e: CaptionEvent) => {
-    if (e.type === "dialogue" || e.type === "speaker_overlap") {
-      return (
-        project?.speakers.find((s) => s.id === e.speaker_id)?.color ??
-        EVENT_TYPES[e.type]?.color ??
-        "#888"
-      );
-    }
-    return EVENT_TYPES[e.type]?.color ?? "#888";
+export function Timeline({project, selectedEventId, time, onSelectEvent, onScrub,
+  selectedIds, onMoveSelection,ripple, onUpdateEvent, duration: durationProp, mediaName}: Props) {
+  const duration = durationProp ?? project?.video.duration ?? 0;
+  const [ppx, setPpx] = useState(60);
+  const [draft, setDraft] = useState<{id: string; start: number; end: number; mode?:string;ids?:string[]} | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const stopPointer=useRef<(()=>void)|null>(null);
+  useEffect(()=>()=>{stopPointer.current?.();},[]);
+  const contentW = Math.max(400, duration * ppx) + HEAD_W;
+  const selected = project?.events.find(e => e.id === selectedEventId);
+  const ticks=timelineTicks(duration,ppx);
+  useEffect(()=>{
+    const body=bodyRef.current;if(!body)return;
+    const x=HEAD_W+time*ppx,padding=30;
+    if(x<body.scrollLeft+HEAD_W||x>body.scrollLeft+body.clientWidth-padding)
+      body.scrollLeft=Math.max(0,x-HEAD_W-padding);
+  },[time,ppx]);
+  const seek = (clientX: number) => {
+    const body = bodyRef.current; if (!body) return;
+    const x = clientX - body.getBoundingClientRect().left + body.scrollLeft - HEAD_W;
+    onScrub(Math.max(0, Math.min(duration, x / ppx)));
   };
-
-  const selectedEvent = project?.events.find((e) => e.id === selectedEventId);
-
-  const TrackHead = ({ label, color }: { label: string; color?: string }) => (
-    <div
-      className="tl-track-head"
-      style={{ position: "sticky", left: 0 }}
-    >
-      <span className="dot" style={{ "--dot": color ?? "var(--text-400)" } as React.CSSProperties} />
-      {label}
-    </div>
-  );
-
-  const Lane = ({ children }: { children: React.ReactNode }) => (
-    <div
-      className="tl-lane"
-      style={{ width: duration * ppx, position: "relative" }}
-    >
-      {children}
-    </div>
-  );
-
-  const EventClip = ({ e }: { e: CaptionEvent }) => {
-    const left = e.start * ppx;
-    const width = Math.max(6, (e.end - e.start) * ppx);
-    const color = speakerColor(e);
-    const ink = readableOn(color);
-    const sel = e.id === selectedEventId;
-    return (
-      <div
-        key={e.id}
-        className={`tl-clip ${sel ? "selected" : ""}`}
-        style={{
-          left,
-          width,
-          background: `linear-gradient(180deg, ${color}, ${color}d9)`,
-          color: ink,
-        }}
-        title={`${e.text} (${fmtTime(e.start)} → ${fmtTime(e.end)})`}
-        onClick={() => onSelectEvent(e.id)}
-      >
-        <span className="clip-label">{e.text || e.type}</span>
-      </div>
-    );
+  const drag = (ev: React.PointerEvent, event: CaptionEvent, mode: 'move' | 'start' | 'end') => {
+    stopPointer.current?.();
+    ev.stopPropagation(); ev.preventDefault(); if(ev.shiftKey||ev.ctrlKey||ev.metaKey){onSelectEvent(event.id,true);return;}
+    const group = mode==='move' && selectedIds?.includes(event.id) ? selectedIds : [event.id];
+    if(group.length===1)onSelectEvent(event.id);
+    const minimum=Math.min(...(project?.events.filter(e=>group.includes(e.id)).map(e=>e.start)??[event.start]));
+    const origin = ev.clientX; let next = {id: event.id, start: event.start, end: event.end,mode,ids:group};
+    const move = (p: PointerEvent) => {
+      const delta = (p.clientX - origin) / ppx;
+      const span = event.end - event.start;
+      if (mode === 'move') {
+        const start = Math.max(event.start-minimum, event.start + delta);
+        next = {...next, start, end: start + span};
+      } else if (mode === 'start') next = {...next, start: Math.max(0, Math.min(event.end - .05, event.start + delta)), end: event.end};
+      else next = {...next, start: event.start, end: Math.max(event.start + .05, Math.min(duration, event.end + delta))};
+      setDraft(next);
+    };
+    const end = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', cancel); stopPointer.current=null;setDraft(null);
+      if (Math.abs(next.start - event.start) > .001 || Math.abs(next.end - event.end) > .001)
+        if(mode==='move'&&onMoveSelection)onMoveSelection(group,+(next.start-event.start).toFixed(3));
+        else onUpdateEvent(event.id, {start: +next.start.toFixed(3), end: +next.end.toFixed(3)});
+    };
+    const cancel = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', end); window.removeEventListener('pointercancel', cancel); stopPointer.current=null;setDraft(null); };
+    stopPointer.current=cancel;
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', end); window.addEventListener('pointercancel', cancel);
   };
-
-  return (
-    <div className="timeline" style={{ margin: "0 0 var(--sp-4)" }}>
-      {/* header */}
-      <div className="tl-head">
-        <div className="tl-title">
-          <Icon name="timeline" size={16} />
-          Timeline
-          <span className="mono" style={{ fontSize: 10.5, color: "var(--text-400)" }}>
-            {duration > 0 ? `${fmtTime(duration)}` : "0:00"}
-          </span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button
-            className="subtle"
-            onClick={() => setPpx((p) => Math.max(16, p * 0.8))}
-            style={{ width: 28, height: 28, padding: 0 }}
-            title="Zoom out"
-          >
-            <Icon name="zoom-out" size={15} />
-          </button>
-          <div className="tl-zoom">
-            <span className="mono">{Math.round(ppx)} px/s</span>
-          </div>
-          <button
-            className="subtle"
-            onClick={() => setPpx((p) => Math.min(400, p * 1.25))}
-            style={{ width: 28, height: 28, padding: 0 }}
-            title="Zoom in"
-          >
-            <Icon name="zoom-in" size={15} />
-          </button>
-          <span className="pill">
-            {project?.events.length ?? 0} events
-          </span>
-        </div>
+  return <div className="timeline">
+    <div className="tl-head"><div className="tl-title"><Icon name="timeline" size={16}/> Timeline <span className="dim">{fmtTime(duration)}</span></div>
+      <div className="timeline-actions"><span className="tl-help">Drag to move · edges to trim</span>
+        <button className="subtle" title="Zoom out" onClick={() => setPpx(p => Math.max(10, p / 1.25))}><Icon name="zoom-out" size={15}/></button>
+        <button className="subtle" title="Zoom in" onClick={() => setPpx(p => Math.min(400, p * 1.25))}><Icon name="zoom-in" size={15}/></button>
       </div>
-
-      {/* body */}
-      <div className="tl-body">
-        <div style={{ width: contentW, position: "relative", minHeight: "100%" }}>
-          {/* ruler */}
-          <div className="tl-ruler" style={{ width: contentW }}>
-            <div
-              style={{
-                position: "sticky",
-                left: 0,
-                width: HEAD_W,
-                height: "100%",
-                background: "var(--bg-3)",
-                borderRight: "1px solid var(--border-2)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "flex-end",
-                paddingRight: 10,
-                fontSize: 9.5,
-                color: "var(--text-400)",
-                letterSpacing: "0.1em",
-                zIndex: 5,
-              }}
-            >
-              TIME
-            </div>
-            {ticks.map((tk) => (
-              <div
-                key={tk.t}
-                className={`tl-tick ${tk.major ? "major" : ""}`}
-                style={{ left: HEAD_W + tk.t * ppx }}
-              >
-                {tk.major && <span>{fmtTime(tk.t)}</span>}
-              </div>
-            ))}
-          </div>
-
-          {/* video */}
-          <div className="tl-track" style={{ width: contentW, height: 46 }}>
-            <TrackHead label="Video" color="var(--text-400)" />
-            <Lane>
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 5,
-                  borderRadius: 6,
-                  background:
-                    "linear-gradient(90deg,#2a2a3a,#22222f 40%,#262634 70%,#1e1e28)",
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
-                  display: "flex",
-                  alignItems: "center",
-                  padding: "0 12px",
-                  color: "var(--text-400)",
-                  fontSize: 11,
-                  fontWeight: 540,
-                  letterSpacing: "0.04em",
-                }}
-              >
-                <Icon name="film" size={13} style={{ marginRight: 8 }} />
-                Source · {project?.video.width ?? 1920}×{project?.video.height ?? 1080}
-              </div>
-            </Lane>
-          </div>
-
-          {/* audio */}
-          <div className="tl-track" style={{ width: contentW, height: 40 }}>
-            <TrackHead label="Audio" color="var(--char-cyan)" />
-            <Lane>
-              <div className="tl-wave">
-                {wave.map((v, i) => (
-                  <span key={i} style={{ height: `${v * 100}%` }} />
-                ))}
-              </div>
-            </Lane>
-          </div>
-
-          {/* captions tracks */}
-          {(
-            [
-              ["dialogue", "Dialogue", "var(--ev-dialogue)"],
-              ["sound_effect", "SFX", "var(--ev-sfx)"],
-              ["music", "Music", "var(--ev-music)"],
-            ] as const
-          ).map(([type, label, color]) => (
-            <div
-              key={type}
-              className="tl-track"
-              style={{ width: contentW, height: type === "dialogue" ? 44 : 38 }}
-            >
-              <TrackHead label={label} color={color} />
-              <Lane>
-                {project?.events
-                  .filter((e) => e.type === type)
-                  .map((e) => (
-                    <EventClip key={e.id} e={e} />
-                  ))}
-              </Lane>
-            </div>
-          ))}
-
-          {/* word-level track (for selected event) */}
-          <div className="tl-track" style={{ width: contentW, height: 40 }}>
-            <TrackHead label="Words" color="var(--accent)" />
-            <Lane>
-              {selectedEvent?.words.map((w2, i) => {
-                const left = w2.start * ppx;
-                const width = Math.max(3, (w2.end - w2.start) * ppx);
-                return (
-                  <div
-                    key={i}
-                    className="tl-wordbar"
-                    title={w2.text}
-                    style={{
-                      left,
-                      width,
-                      background:
-                        w2.color.startsWith("#FFFFFF") || w2.color === "#FFFFFF"
-                          ? "#fff"
-                          : w2.color,
-                    }}
-                  />
-                );
-              })}
-              {!selectedEvent && (
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    display: "flex",
-                    alignItems: "center",
-                    padding: "0 14px",
-                    color: "var(--text-500)",
-                    fontSize: 11,
-                  }}
-                >
-                  Select an event to reveal its word timing
-                </div>
-              )}
-            </Lane>
-          </div>
-
-          {/* playhead */}
-          <div
-            className="tl-playhead"
-            style={{ left: HEAD_W + time * ppx }}
-            onClick={(e) => {
-              e.stopPropagation();
-            }}
-          />
-        </div>
-      </div>
-
-      {/* scrub-on-ruler handled by transport; keep ref-friendly hook */}
-      <span
-        style={{ display: "none" }}
-        onClick={() => onScrub(0)}
-        aria-hidden
-      />
     </div>
-  );
+    <div className="tl-body" ref={bodyRef}><div style={{width: contentW, position: 'relative'}}>
+      <div className="tl-ruler" role="slider" aria-label="Timeline playhead" aria-valuemin={0} aria-valuemax={duration} aria-valuenow={time} tabIndex={0}
+        onKeyDown={e => { if (['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) {e.preventDefault(); e.stopPropagation(); onScrub(e.key === 'Home' ? 0 : e.key === 'End' ? duration : time + (e.key === 'ArrowRight' ? 1 : -1) / (project?.video.fps || 24));} }}
+        onPointerDown={e => { stopPointer.current?.();seek(e.clientX); const move = (p: PointerEvent) => seek(p.clientX); const end = () => { window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',end);window.removeEventListener('pointercancel',end);stopPointer.current=null; };stopPointer.current=end; window.addEventListener('pointermove',move);window.addEventListener('pointerup',end);window.addEventListener('pointercancel',end); }}>
+        <div className="tl-track-head" style={{width: HEAD_W}}>TIME</div>
+        {ticks.map(t => <div key={t} className="tl-tick major" style={{left: HEAD_W + t * ppx}}><span>{fmtTime(t)}</span></div>)}
+      </div>
+      <div className="tl-track" style={{height: 38}}><div className="tl-track-head" style={{width: HEAD_W}}>Video</div><div className="tl-lane source-lane" style={{width:contentW - HEAD_W}}>{mediaName || 'No video loaded. Import a local video to composite.'}</div></div>
+      {speakerLanes(project?.events??[],project?.speakers??[]).map(lane => <div key={lane.key} className="tl-track" style={{height: 38}}>
+        <div className="tl-track-head" title={lane.label} style={{width:HEAD_W,color:lane.color}}>{lane.label}</div>
+        <div className="tl-lane" style={{width:contentW - HEAD_W, position:'relative'}}>
+          {lane.events.map(e => {
+            const dragged=project?.events.find(item=>item.id===draft?.id);
+            const linked=draft?.mode==='move'&&dragged&&(e.id===draft.id||(draft.ids?.includes(e.id))||(ripple&&e.start>=Math.max(...(project?.events.filter(item=>draft.ids?.includes(item.id)).map(item=>item.end)??[dragged.end]))));
+            const offset=linked&&draft&&dragged?draft.start-dragged.start:0;
+            const current = draft?.id === e.id ? draft : linked?{...e,start:e.start+offset,end:e.end+offset}:e;
+            const color = project?.speakers.find(s => s.id === e.speaker_id)?.color || EVENT_TYPES[e.type]?.color || '#aaa';
+            return <div key={e.id} role="button" tabIndex={0} aria-label={`Caption ${e.text}`} className={`tl-clip ${(selectedIds?.includes(e.id)??selectedEventId === e.id) ? 'selected' : ''}`}
+              style={{left:current.start * ppx,width: Math.max(8,(current.end - current.start) * ppx),background:color,color:readableOn(color)}}
+              title={`${e.text}: ${current.start.toFixed(2)} to ${current.end.toFixed(2)} seconds`}
+              onPointerDown={p => drag(p,e,'move')}
+              aria-pressed={selectedIds?.includes(e.id)??selectedEventId===e.id}
+              onKeyDown={p => { if (p.key === 'Enter'||p.code==='Space') {p.preventDefault();p.stopPropagation();onSelectEvent(e.id,p.shiftKey||p.ctrlKey||p.metaKey);if(!p.shiftKey&&!p.ctrlKey&&!p.metaKey)onScrub(e.start);} }}>
+              <span className="trim-handle left" onPointerDown={p => drag(p,e,'start')} title="Trim start"/>
+              <span className="clip-label">{e.text || 'Empty caption'}</span>
+              <span className="trim-handle right" onPointerDown={p => drag(p,e,'end')} title="Trim end"/>
+            </div>;
+          })}
+        </div>
+      </div>)}
+      <div className="tl-track" style={{height: 30}}><div className="tl-track-head" style={{width:HEAD_W}}>Words</div><div className="tl-lane" style={{width:contentW - HEAD_W,position:'relative'}}>
+        {selected?.words.map((w,i) => <button key={i} aria-label={`Seek to word ${w.text}`} className="tl-wordbar" title={`${w.text}: ${w.start.toFixed(2)}s`} onClick={() => onScrub(w.start)} style={{left:w.start * ppx,width:Math.max(3,(w.end-w.start)*ppx),background:w.color}}/>)}
+      </div></div>
+      <div className="tl-playhead" style={{left:HEAD_W + time * ppx,pointerEvents:'none'}}/>
+    </div></div>
+  </div>;
 }

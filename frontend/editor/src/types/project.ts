@@ -45,9 +45,12 @@ export interface Word {
   manual_override: boolean;
   review_state: ReviewState;
   syllables: WordSyllable[] | null;
+  pitch_hz?: number | null;
+  letter_pitches?: (number | null)[] | null;
 }
 
 export interface WordSyllable {
+  pitch_hz?: number | null;
   text: string;
   start: number;
   end: number;
@@ -75,6 +78,9 @@ export interface Style {
   breakout_permission: boolean;
   minimum_pct: number;
   maximum_pct: number;
+  escalation_rate?: number;
+  escalation_max?: number;
+  escalation_gate?: number;
 }
 
 // ─── CaptionEvent ────────────────────────────────────────
@@ -94,6 +100,10 @@ export interface CaptionEvent {
   source_timestamp: number | null;
   manual_override: boolean;
   review_state: ReviewState;
+  speaker_review_required?:boolean;
+  speaker_review_reasons?:string[];
+  speaker_coverage?:number|null;
+  speaker_reviewed?:boolean;
   exception_profile: string | null;
   notes: string;
 }

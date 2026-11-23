@@ -3,29 +3,39 @@ import { Icon } from "@/lib/icons";
 interface TopBarProps {
   projectName: string;
   onRename: (name: string) => void;
+  onRenameCommit: () => void;
   source: "live" | "demo";
   stats: { speakers: number; events: number };
   video?: { width: number; height: number; fps: number };
   onExit: () => void;
+  onExport: () => void;
+  onImportMedia: () => void;
+  onOpenProject: () => void;
+  localLabel: string;
 }
 
 export function TopBar({
   projectName,
   onRename,
+  onRenameCommit,
   source,
   stats,
   video,
   onExit,
+  onExport,
+  onImportMedia,
+  onOpenProject,
+  localLabel,
 }: TopBarProps) {
   return (
     <header className="topbar">
       {/* brand */}
       <div className="app-mark">
         <span className="mark-badge">
-          <Icon name="logo" size={17} />
+          CI
         </span>
         <span className="mark-word">
-          <b>CWI</b>
+          <b>Automated CWI</b>
         </span>
       </div>
 
@@ -36,6 +46,7 @@ export function TopBar({
         className="project-name"
         value={projectName}
         onChange={(e) => onRename(e.target.value)}
+        onBlur={onRenameCommit}
         aria-label="Project name"
         spellCheck={false}
       />
@@ -43,7 +54,7 @@ export function TopBar({
       {source === "demo" && (
         <span className="pill" style={{ color: "var(--accent-text)", borderColor: "var(--accent-soft)", background: "var(--accent-softer)" }}>
           <Icon name="sparkle" size={12} />
-          Demo scene
+          {localLabel}
         </span>
       )}
 
@@ -76,9 +87,13 @@ export function TopBar({
       <button className="icon-btn" title="Back to start" onClick={onExit}>
         <Icon name="monitor" size={17} />
       </button>
-      <button className="ghost" title="Export">
+      <button className="ghost" title="Open project JSON" onClick={onOpenProject}>Open project</button>
+      <button className="ghost" onClick={onImportMedia} title="Import local video">
+        <Icon name="film" size={15} /> Import video
+      </button>
+      <button className="ghost" title="Download project JSON" onClick={onExport}>
         <Icon name="export" size={15} />
-        Export
+        Save project
       </button>
     </header>
   );

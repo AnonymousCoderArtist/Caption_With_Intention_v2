@@ -8,7 +8,7 @@ export function Toast({
   kind?: "success" | "error";
 }) {
   return (
-    <div className={`toast ${kind === "error" ? "error" : ""}`}>
+    <div role={kind === "error" ? "alert" : "status"} className={`toast ${kind === "error" ? "error" : ""}`}>
       <span className="t-ic">
         <Icon name={kind === "error" ? "close" : "check"} size={12} strokeWidth={2.6} />
       </span>

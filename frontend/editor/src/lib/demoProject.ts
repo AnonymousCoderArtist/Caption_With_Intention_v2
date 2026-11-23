@@ -13,6 +13,9 @@ import type {
   Style,
   Word,
 } from "@/types/project";
+import {structureEdit} from "./structureEdit";
+import {batchEdit} from "./batchEdit";
+import {styleError, wordsError} from "./validation";
 import { SpeakerCategory, EventType, ReviewState } from "@/types/project";
 
 /* ── word builder ──────────────────────────────────────────── */
@@ -275,8 +278,15 @@ export class DemoClient {
   private past: Project[] = [];
   private future: Project[] = [];
 
-  constructor() {
-    this.project = createDemoProject();
+  constructor(project?: Project) {
+    this.project = project ? clone(project) : createDemoProject();
+  }
+
+  private nextId(prefix: string, items: {id: string}[]) {
+    const ids = new Set(items.map(x => x.id));
+    let n = 1;
+    while (ids.has(`${prefix}_${String(n).padStart(3, "0")}`)) n++;
+    return `${prefix}_${String(n).padStart(3, "0")}`;
   }
 
   private commit() {
@@ -296,6 +306,26 @@ export class DemoClient {
   // ── project ──
   async getProject() {
     return this.ok(clone(this.project));
+  }
+  async updateProject(updates: Omit<Partial<Project>, "video"> & {video?: Partial<Project["video"]>}) {
+    this.commit();
+    if (updates.project_name !== undefined) this.project.project_name = updates.project_name;
+    if (updates.video) this.project.video = {...this.project.video,...updates.video};
+    return this.ok(clone(this.project));
+  }
+  async assignSpeakerEvents(ids:string[],speakerId:string|null,reviewed=true){
+    if(speakerId&&!this.project.speakers.some(s=>s.id===speakerId))return this.err('Speaker does not exist');
+    const targets=this.project.events.filter(e=>ids.includes(e.id));
+    if(!targets.length||targets.length!==new Set(ids).size)return this.err('Select existing events');
+    this.commit();targets.forEach(e=>{e.speaker_id=speakerId;e.speaker_reviewed=reviewed;e.manual_override=true;});return this.ok(clone(this.project));
+  }
+  async structureEvents(ids:string[],operation:'split'|'merge',at=0){
+    try{const next=structureEdit(this.project,ids,operation,at);this.commit();this.project=next;return this.ok(clone(this.project));}
+    catch(e){return this.err(e instanceof Error?e.message:'Caption edit failed.');}
+  }
+  async batchEvents(ids:string[],operation:'move'|'delete',delta=0,ripple=false){
+    try{const next=batchEdit(this.project,ids,operation,delta,ripple);this.commit();this.project=next;return this.ok(clone(this.project));}
+    catch(error){return this.err(error instanceof Error?error.message:'Batch edit failed');}
   }
   async getProjectSummary() {
     return this.ok({
@@ -335,7 +365,7 @@ export class DemoClient {
     off_camera?: boolean;
   }) {
     this.commit();
-    const id = `spk_${String(this.project.speakers.length + 1).padStart(3, "0")}`;
+    const id = this.nextId("spk", this.project.speakers);
     const s = spk(
       id,
       p.name,
@@ -347,10 +377,11 @@ export class DemoClient {
     return this.ok(s);
   }
   async updateSpeaker(speakerId: string, updates: Partial<Speaker>) {
-    this.commit();
     const s = this.project.speakers.find((x) => x.id === speakerId);
     if (!s) return this.err("Speaker not found");
-    Object.assign(s, updates, { id: s.id });
+    const next={...s,...updates,id:s.id};
+    if(typeof next.name!=='string'||!/^#[0-9a-f]{6}$/i.test(next.color)||!Object.values(SpeakerCategory).includes(next.category))return this.err("Invalid speaker name, color or category");
+    this.commit(); Object.assign(s, next);
     return this.ok(clone(s));
   }
   async setSpeakerColor(speakerId: string, color: string) {
@@ -360,6 +391,7 @@ export class DemoClient {
     this.commit();
     const i = this.project.speakers.findIndex((x) => x.id === speakerId);
     if (i >= 0) this.project.speakers.splice(i, 1);
+    this.project.events.forEach(e=>{if(e.speaker_id===speakerId){e.speaker_id=null;e.speaker_reviewed=false;}});
     return this.ok({ removed: speakerId });
   }
   async getSpeakers() {
@@ -376,7 +408,7 @@ export class DemoClient {
     words?: Array<Record<string, any>>;
   }) {
     this.commit();
-    const id = `evt_${String(this.project.events.length + 1).padStart(3, "0")}`;
+    const id = this.nextId("evt", this.project.events);
     const color =
       this.project.speakers.find((s) => s.id === p.speaker_id)?.color ?? "#FFFFFF";
     const words: Word[] =
@@ -408,15 +440,32 @@ export class DemoClient {
       p.text,
       words,
     );
+    e.confidence = null;
+    e.manual_override = true;
     this.project.events.push(e);
     this.project.events.sort((a, b) => a.start - b.start);
     return this.ok(clone(e));
   }
   async updateEvent(eventId: string, updates: Partial<CaptionEvent>) {
-    this.commit();
     const e = this.project.events.find((x) => x.id === eventId);
     if (!e) return this.err("Event not found");
-    Object.assign(e, updates, { id: e.id });
+    const next = {...clone(e), ...updates, id: e.id};
+    if (!Number.isFinite(next.start) || !Number.isFinite(next.end) || next.start < 0 || next.end <= next.start)
+      return this.err('Event end must be after its start');
+    if (updates.text !== undefined && !updates.words) {
+      const tokens = updates.text.trim().split(/\s+/).filter(Boolean);
+      next.words = tokens.length === e.words.length ? e.words.map((word, i) => ({...word, text: tokens[i]}))
+        : tokens.map((text, i) => w(text, next.start + i * (next.end-next.start)/tokens.length, next.start + (i+1)*(next.end-next.start)/tokens.length, '#FFFFFF'));
+    }
+    if ((updates.start !== undefined || updates.end !== undefined) && !updates.words && updates.text === undefined) {
+      const retime = (t: number) => next.start + (t-e.start) * (next.end-next.start) / Math.max(.001,e.end-e.start);
+      next.words = e.words.map(word => ({...word,start:retime(word.start),end:retime(word.end),syllables:word.syllables?.map(sy => ({...sy,start:retime(sy.start),end:retime(sy.end)})) ?? null}));
+    }
+    if (next.words.some(word => !Number.isFinite(word.start) || !Number.isFinite(word.end) || word.start < next.start || word.end > next.end + 1e-6 || word.end <= word.start))
+      return this.err('Words must have positive duration inside the event');
+    const validation = wordsError(next.words) || styleError(next.style);
+    if(validation)return this.err(validation);
+    this.commit(); Object.assign(e, next);
     return this.ok(clone(e));
   }
   async removeEvent(eventId: string) {
@@ -431,61 +480,58 @@ export class DemoClient {
 
   // ── words ──
   async addWord(eventId: string, text: string, start: number, end: number) {
-    this.commit();
-    const e = this.project.events.find((x) => x.id === eventId);
-    if (!e) return this.err("Event not found");
-    const color =
-      this.project.speakers.find((s) => s.id === e.speaker_id)?.color ?? "#FFFFFF";
-    e.words.push(w(text, start, end, color));
-    return this.ok(clone(e));
+    const e = this.project.events.find(x => x.id === eventId); if (!e) return this.err('Event not found');
+    const words = [...e.words, w(text,start,end,'#FFFFFF')];
+    return this.updateEvent(eventId, {words,text:words.map(x => x.text).join(' ')});
   }
   async updateWord(eventId: string, wordIndex: number, updates: Partial<Word>) {
-    this.commit();
-    const e = this.project.events.find((x) => x.id === eventId);
-    if (!e || !e.words[wordIndex]) return this.err("Word not found");
-    Object.assign(e.words[wordIndex], updates);
-    e.text = e.words.map((x) => x.text).join(" ");
-    return this.ok(clone(e));
+    const e = this.project.events.find(x => x.id === eventId); if (!e?.words[wordIndex]) return this.err('Word not found');
+    const words = e.words.map((word,i) => {
+      if(i!==wordIndex)return word;
+      const next={...word,...updates};
+      if((updates.start!==undefined||updates.end!==undefined)&&updates.syllables===undefined&&word.syllables){
+        const retime=(t:number)=>next.start+(t-word.start)*(next.end-next.start)/Math.max(.001,word.end-word.start);
+        next.syllables=word.syllables.map(s=>({...s,start:retime(s.start),end:retime(s.end)}));
+      }
+      return next;
+    });
+    let text=e.text;
+    if(updates.text!==undefined){
+      let cursor=0;const positions:number[]=[];
+      for(const word of e.words){const start=e.text.indexOf(word.text,cursor);if(start<0)break;positions.push(start);cursor=start+word.text.length;}
+      text=positions.length===e.words.length?e.text.slice(0,positions[wordIndex])+updates.text+e.text.slice(positions[wordIndex]+e.words[wordIndex].text.length):words.map(x=>x.text).join(' ');
+    }
+    return this.updateEvent(eventId, {words,text});
   }
   async removeWord(eventId: string, wordIndex: number) {
-    this.commit();
-    const e = this.project.events.find((x) => x.id === eventId);
-    if (!e) return this.err("Event not found");
-    e.words.splice(wordIndex, 1);
-    return this.ok(clone(e));
+    const e = this.project.events.find(x => x.id === eventId); if (!e?.words[wordIndex]) return this.err('Word not found');
+    const words = e.words.filter((_,i) => i !== wordIndex);
+    return this.updateEvent(eventId, {words,text:words.map(x => x.text).join(' ')});
   }
   async adjustWordTiming(eventId: string, wordIndex: number, startDelta: number, endDelta: number) {
-    this.commit();
-    const e = this.project.events.find((x) => x.id === eventId);
-    if (!e || !e.words[wordIndex]) return this.err("Word not found");
-    const w = e.words[wordIndex];
-    w.start = Math.max(e.start, w.start + startDelta);
-    w.end = w.start + Math.max(0.05, w.end - w.start + endDelta);
-    return this.ok(clone(e));
+    const e=this.project.events.find(x=>x.id===eventId),word=e?.words[wordIndex];
+    if(!e||!word)return this.err('Word not found');
+    const start=Math.max(e.start,word.start+startDelta),end=Math.min(e.end,Math.max(start+.001,word.end+endDelta));
+    return this.updateWord(eventId,wordIndex,{start,end});
   }
 
   // ── timing ──
-  async adjustEventTiming(eventId: string, startDelta: number, endDelta: number) {
-    this.commit();
-    const e = this.project.events.find((x) => x.id === eventId);
-    if (!e) return this.err("Event not found");
-    const dur = e.end - e.start;
-    e.start = Math.max(0, e.start + startDelta);
-    e.end = e.start + Math.max(0.1, dur + endDelta);
-    const shift = startDelta;
-    e.words.forEach((w) => {
-      w.start += shift;
-      w.end += shift;
-    });
-    return this.ok(clone(e));
+  async adjustEventTiming(eventId:string,startDelta:number,endDelta:number){
+    const e=this.project.events.find(x=>x.id===eventId);if(!e)return this.err('Event not found');
+    const start=Math.max(0,e.start+startDelta),end=Math.max(start+.001,e.end+endDelta);
+    return this.updateEvent(eventId,{start,end});
   }
 
   // ── style ──
+  async setStyle(eventId: string, style: Partial<Style>) {
+    return this.setTypography(eventId, style);
+  }
   async setTypography(eventId: string, t: Record<string, any>) {
-    this.commit();
     const e = this.project.events.find((x) => x.id === eventId);
     if (!e) return this.err("Event not found");
-    Object.assign(e.style, t);
+    const next = {...e.style,...t};
+    const validation = styleError(next); if(validation)return this.err(validation);
+    this.commit(); e.style = next;
     return this.ok(clone(e));
   }
   async setAnimation(eventId: string, a: Record<string, any>) {

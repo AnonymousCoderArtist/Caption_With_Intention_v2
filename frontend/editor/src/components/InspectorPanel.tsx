@@ -1,9 +1,16 @@
+import { useId } from "react";
+import {speakerReviewReasons} from "@/lib/speakerReview";
+import { DraftNumber } from "./DraftNumber";
+import { DraftText } from "./DraftText";
 import type { CaptionEvent, Speaker, Word } from "@/types/project";
 import { EVENT_TYPES } from "@/lib/theme";
 import { Icon, type IconName } from "@/lib/icons";
 
 interface InspectorPanelProps {
   event: CaptionEvent | null;
+  onAudition?:()=>void;
+  onNextSpeakerReview?:()=>void;
+  hasMedia?:boolean;
   speakers: Speaker[];
   onUpdateEvent: (id: string, updates: Partial<CaptionEvent>) => void;
   onUpdateStyle: (id: string, updates: Record<string, any>) => void;
@@ -28,6 +35,7 @@ function Toggle({
       role="switch"
       aria-checked={on}
       title={label}
+      aria-label={label}
     />
   );
 }
@@ -61,9 +69,10 @@ function Field({
   label: string;
   children: React.ReactNode;
 }) {
+  const id = useId();
   return (
-    <div className="inspector-field">
-      <label>{label}</label>
+    <div className="inspector-field" role="group" aria-labelledby={id}>
+      <label id={id}>{label}</label>
       {children}
     </div>
   );
@@ -79,20 +88,19 @@ function Num({
 }: {
   value: number;
   min: number;
-  max: number;
+  max?: number;
   step: number;
   unit?: string;
   onChange: (v: number) => void;
 }) {
   return (
     <div className="with-unit">
-      <input
-        type="number"
+      <DraftNumber
         value={value}
         min={min}
         max={max}
         step={step}
-        onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+        onCommit={onChange}
       />
       {unit && <span className="unit">{unit}</span>}
     </div>
@@ -136,6 +144,9 @@ function Slider({
 
 export function InspectorPanel({
   event,
+  onAudition,
+  onNextSpeakerReview,
+  hasMedia,
   speakers,
   onUpdateEvent,
   onUpdateStyle,
@@ -164,7 +175,7 @@ export function InspectorPanel({
   const type = EVENT_TYPES[event.type] ?? EVENT_TYPES.custom;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <div key={event.id} style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
       {/* header */}
       <div
         style={{
@@ -175,7 +186,7 @@ export function InspectorPanel({
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <h2 style={{ marginBottom: 0, marginRight: "auto" }}>Inspector</h2>
-          <span className="badge" style={{ background: `${type.color}1f`, color: type.color }}>
+          <span className="ev-kind">
             {type.label}
           </span>
         </div>
@@ -204,16 +215,17 @@ export function InspectorPanel({
         {/* text */}
         <div className="inspector-field" style={{ flexDirection: "column", alignItems: "stretch", gap: 6, marginBottom: 12 }}>
           <label style={{ width: "auto" }}>Text</label>
-          <textarea
+          <DraftText key={event.id} multiline
             rows={2}
             value={event.text}
-            onChange={(e) => onUpdateEvent(event.id, { text: e.target.value })}
+            onCommit={text => onUpdateEvent(event.id, { text })}
             style={{ minHeight: 44 }}
           />
+          <span className="field-note">Word-count changes redistribute word timing across this caption. Undo restores the original.</span>
         </div>
 
         {/* timing */}
-        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+        <div className="paired-fields" style={{ display: "flex", gap: 10, marginBottom: 12 }}>
           <div style={{ flex: 1 }}>
             <Field label="Start">
               <Num
@@ -231,7 +243,6 @@ export function InspectorPanel({
               <Num
                 value={Math.round(event.end * 100) / 100}
                 min={event.start + 0.1}
-                max={600}
                 step={0.01}
                 unit="s"
                 onChange={(v) => onUpdateEvent(event.id, { end: v })}
@@ -240,13 +251,22 @@ export function InspectorPanel({
           </div>
         </div>
 
+        {['dialogue','speaker_overlap'].includes(event.type)&&<div className="speaker-review-box">
+          <b>{event.speaker_reviewed?'Speaker checked':'Speaker attribution'}</b>
+          {speakerReviewReasons(event,speakers).map(reason=><p key={reason}>{reason}</p>)}
+          {event.speaker_coverage!=null&&<p>Diarization coverage: {Math.round(event.speaker_coverage*100)}%. This is timing coverage, not identity certainty.</p>}
+          <p>Listen to this turn, choose the speaker below, then mark it checked. Text confidence is separate.</p>
+          <button className="ghost" disabled={!hasMedia} onClick={onAudition}>Listen to turn</button>
+          <button className="ghost" onClick={onNextSpeakerReview}>Next unchecked turn</button>
+          <button className="ghost" onClick={()=>onUpdateEvent(event.id,{speaker_reviewed:!event.speaker_reviewed,manual_override:true})}>{event.speaker_reviewed?'Reopen speaker review':'Mark speaker checked'}</button>
+        </div>}
         {/* speaker + type */}
-        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+        <div className="paired-fields" style={{ display: "flex", gap: 10, marginBottom: 12 }}>
           <div style={{ flex: 1 }}>
             <Field label="Speaker">
               <select
                 value={event.speaker_id ?? ""}
-                onChange={(e) => onUpdateEvent(event.id, { speaker_id: e.target.value || null })}
+                onChange={(e) => onUpdateEvent(event.id, { speaker_id: e.target.value || null,speaker_reviewed:false,manual_override:true })}
               >
                 <option value="">— none —</option>
                 {speakers.map((s) => (
@@ -313,27 +333,27 @@ export function InspectorPanel({
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {event.words.map((w2, idx) => (
-                <div key={idx} className="word-row">
+                <div key={idx}>
+                <div className="word-row">
                   <span className="w-idx">{idx + 1}</span>
-                  <input
+                  <DraftText key={`${event.id}-${idx}`}
+                    aria-label={`Word ${idx + 1} text`}
                     className="w-text"
                     value={w2.text}
-                    onChange={(e) => onUpdateWord(event.id, idx, { text: e.target.value })}
+                    onCommit={text => onUpdateWord(event.id, idx, { text })}
                     style={{ fontSize: 12.5 }}
                   />
-                  <input
-                    type="number"
+                  <DraftNumber
                     step={0.01}
                     value={Math.round(w2.start * 100) / 100}
-                    onChange={(e) => onUpdateWord(event.id, idx, { start: parseFloat(e.target.value) || 0 })}
+                    onCommit={v => onUpdateWord(event.id, idx, { start: v })}
                     style={{ width: 56, padding: "5px 6px", fontSize: 11 }}
                     title="word start (s)"
                   />
-                  <input
-                    type="number"
+                  <DraftNumber
                     step={0.01}
                     value={Math.round(w2.end * 100) / 100}
-                    onChange={(e) => onUpdateWord(event.id, idx, { end: parseFloat(e.target.value) || 0 })}
+                    onCommit={v => onUpdateWord(event.id, idx, { end: v })}
                     style={{ width: 56, padding: "5px 6px", fontSize: 11 }}
                     title="word end (s)"
                   />
@@ -345,6 +365,16 @@ export function InspectorPanel({
                     <Icon name="close" size={13} />
                   </button>
                 </div>
+                <details className="word-properties"><summary>Word {idx + 1} properties</summary>
+                  <div className="word-property-grid">
+                    {([['Size %','size_pct',1,50,.5],['Weight','weight',100,1000,10],['Width %','width',25,151,1],['Opacity','opacity',0,1,.05],['Pitch Hz','pitch_hz',0,2000,1]] as const).map(([label,key,min,max,step]) => <label key={key}>{label}<DraftNumber aria-label={`Word ${idx+1} ${label}`} value={Math.round((w2[key] ?? 0)*100)/100} min={min} max={max} step={step} onCommit={value => onUpdateWord(event.id,idx,{[key]:value})}/></label>)}
+                    <label>Italic<input type="checkbox" checked={w2.italic} onChange={e => onUpdateWord(event.id,idx,{italic:e.target.checked})}/></label>
+                    <label>Manual override<input type="checkbox" checked={w2.manual_override} onChange={e => onUpdateWord(event.id,idx,{manual_override:e.target.checked})}/></label>
+                  </div>
+                  <label className="json-field">Syllables (JSON)<textarea aria-label={`Word ${idx+1} syllables JSON`} key={JSON.stringify(w2.syllables)} defaultValue={JSON.stringify(w2.syllables,null,2)} onBlur={e => {try {const value=JSON.parse(e.target.value);if(value!==null&&(!Array.isArray(value)||value.some((s:any)=>typeof s.text!=='string'||!Number.isFinite(s.start)||!Number.isFinite(s.end)||s.start<w2.start||s.end>w2.end||s.end<=s.start)))throw new Error();onUpdateWord(event.id,idx,{syllables:value});e.target.setCustomValidity('');}catch{e.target.setCustomValidity('Use null or an array of text/start/end syllables inside this word.');e.target.reportValidity();}}}/></label>
+                  <label className="json-field">Letter pitches (JSON)<textarea aria-label={`Word ${idx+1} letter pitches JSON`} key={JSON.stringify(w2.letter_pitches)} defaultValue={JSON.stringify(w2.letter_pitches??null)} onBlur={e => {try{const value=JSON.parse(e.target.value);if(value!==null&&(!Array.isArray(value)||value.some((v:any)=>v!==null&&(!Number.isFinite(v)||v<0))))throw new Error();onUpdateWord(event.id,idx,{letter_pitches:value});e.target.setCustomValidity('');}catch{e.target.setCustomValidity('Use null or an array of non-negative pitches/nulls.');e.target.reportValidity();}}}/></label>
+                </details>
+                </div>
               ))}
             </div>
           )}
@@ -353,17 +383,17 @@ export function InspectorPanel({
         {/* typography */}
         <Section icon="sliders" title="Typography">
           <Field label="Size">
-            <Num value={st.size_pct} min={1} max={20} step={0.5} unit="%" onChange={(v) => onUpdateStyle(event.id, { size_pct: v })} />
+            <Num value={st.size_pct} min={1} max={20} step={0.5} unit="%" onChange={(v) => onUpdateStyle(event.id, { size_pct: v, size_mode:"manual" })} />
           </Field>
           <Field label="Weight">
-            <select value={st.weight} onChange={(e) => onUpdateStyle(event.id, { weight: parseInt(e.target.value) })}>
+            <select value={st.weight} onChange={(e) => onUpdateStyle(event.id, { weight: parseInt(e.target.value), weight_mode:"manual" })}>
               {[100, 200, 300, 400, 500, 600, 700, 800, 900].map((w3) => (
                 <option key={w3} value={w3}>{w3}</option>
               ))}
             </select>
           </Field>
           <Field label="Width">
-            <Num value={st.width} min={75} max={125} step={1} unit="%" onChange={(v) => onUpdateStyle(event.id, { width: v })} />
+            <Num value={st.width} min={75} max={125} step={1} unit="%" onChange={(v) => onUpdateStyle(event.id, { width: v, width_mode:"manual" })} />
           </Field>
           <div className="inspector-field">
             <label>Italic</label>
@@ -395,13 +425,14 @@ export function InspectorPanel({
 
         {/* animation */}
         <Section icon="sparkle" title="Animation">
-          <Field label="Pop scale">
+          <Field label="Letter lift">
             <Slider value={st.pop_scale} min={1} max={1.6} step={0.05} onChange={(v) => onUpdateStyle(event.id, { pop_scale: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
           </Field>
-          <Field label="Pop duration">
+          <p className="field-note">Stable preview and final render use a fixed 60 ms rise and bounded settle. Legacy duration/easing and syllable mode remain saved but do not override the continuous letter wave.</p>
+          <Field label="Legacy duration">
             <Num value={st.pop_duration ?? 0} min={0} max={2} step={0.05} unit="s" onChange={(v) => onUpdateStyle(event.id, { pop_duration: v })} />
           </Field>
-          <Field label="Easing">
+          <Field label="Legacy easing">
             <select value={st.pop_easing} onChange={(e) => onUpdateStyle(event.id, { pop_easing: e.target.value })}>
               <option value="smooth">Smooth</option>
               <option value="ease_in">Ease in</option>
@@ -409,7 +440,7 @@ export function InspectorPanel({
             </select>
           </Field>
           <div className="inspector-field">
-            <label>Syllable mode</label>
+            <label>Legacy syllable mode</label>
             <Toggle on={st.syllable_mode} onClick={() => onUpdateStyle(event.id, { syllable_mode: !st.syllable_mode })} label="Syllable mode" />
           </div>
           <Field label="Read-ahead opacity">
@@ -426,12 +457,13 @@ export function InspectorPanel({
             <Num value={st.box_padding} min={0} max={50} step={1} unit="px" onChange={(v) => onUpdateStyle(event.id, { box_padding: v })} />
           </Field>
           <div className="inspector-field">
-            <label>Breakout allowed</label>
+            <label>Legacy breakout flag</label>
             <Toggle on={st.breakout_permission} onClick={() => onUpdateStyle(event.id, { breakout_permission: !st.breakout_permission })} label="Breakout" />
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
+          <p className="field-note">Stable renderer applies automatic loud-burst breakout. This legacy flag and minimum size remain saved but do not override that path. Maximum size caps held-emphasis growth, not every manual word size.</p>
+          <div style={{ display: "grid", gridTemplateColumns:"1fr", gap: 10 }}>
             <div style={{ flex: 1 }}>
-              <Field label="Min size">
+              <Field label="Legacy min size">
                 <Num value={st.minimum_pct} min={1} max={20} step={0.5} unit="%" onChange={(v) => onUpdateStyle(event.id, { minimum_pct: v })} />
               </Field>
             </div>
@@ -443,6 +475,15 @@ export function InspectorPanel({
           </div>
         </Section>
 
+        <Section icon="sliders" title="Held emphasis">
+          <Field label="Growth / s"><Num value={st.escalation_rate ?? .8} min={0} max={5} step={.1} onChange={v=>onUpdateStyle(event.id,{escalation_rate:v})}/></Field>
+          <Field label="Growth cap"><Num value={st.escalation_max ?? 1.8} min={1} max={5} step={.1} onChange={v=>onUpdateStyle(event.id,{escalation_max:v})}/></Field>
+          <Field label="Loudness gate"><Num value={st.escalation_gate ?? 1.3} min={1} max={5} step={.1} onChange={v=>onUpdateStyle(event.id,{escalation_gate:v})}/></Field>
+        </Section>
+        <Section icon="list" title="Review">
+          <Field label="Status"><select aria-label="Review status" value={event.review_state} onChange={e=>onUpdateEvent(event.id,{review_state:e.target.value as any})}>{['pending','accepted','rejected','corrected'].map(v=><option key={v}>{v}</option>)}</select></Field>
+          <label className="json-field">Notes<DraftText multiline aria-label="Caption notes" value={event.notes} onCommit={notes=>onUpdateEvent(event.id,{notes})}/></label>
+        </Section>
         <div style={{ height: 12 }} />
       </div>
     </div>

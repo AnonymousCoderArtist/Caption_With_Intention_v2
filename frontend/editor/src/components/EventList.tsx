@@ -1,13 +1,15 @@
 import { useMemo, useState } from "react";
 import type { CaptionEvent, Speaker } from "@/types/project";
 import { EventItem } from "./EventItem";
+import {speakerReviewReasons} from "@/lib/speakerReview";
 import { Icon } from "@/lib/icons";
 
 interface EventListProps {
   events: CaptionEvent[];
   speakers: Speaker[];
   selectedEventId: string | null;
-  onSelect: (id: string) => void;
+  selectedIds?:string[];
+  onSelect: (id: string, additive?:boolean) => void;
   onDelete: (id: string) => void;
   onNew: () => void;
 }
@@ -16,15 +18,18 @@ export function EventList({
   events,
   speakers,
   selectedEventId,
+  selectedIds,
   onSelect,
   onDelete,
   onNew,
 }: EventListProps) {
   const [query, setQuery] = useState("");
+  const [reviewOnly,setReviewOnly]=useState(false);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return events;
-    return events.filter(
+    const candidates=reviewOnly?events.filter(e=>speakerReviewReasons(e,speakers).length):events;
+    if (!q) return candidates;
+    return candidates.filter(
       (e) =>
         e.text.toLowerCase().includes(q) ||
         e.id.toLowerCase().includes(q) ||
@@ -32,7 +37,7 @@ export function EventList({
         speakers.find((s) => s.id === e.speaker_id)?.name.toLowerCase()
           .includes(q),
     );
-  }, [events, query, speakers]);
+  }, [events, query, speakers,reviewOnly]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
@@ -63,11 +68,13 @@ export function EventList({
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          aria-label="Search captions"
           placeholder="Search text, speaker, type…"
           style={{ background: "var(--bg-3)" }}
         />
       </div>
 
+      <label className="review-filter"><input type="checkbox" checked={reviewOnly} onChange={e=>setReviewOnly(e.target.checked)}/> Speaker review · {events.filter(e=>speakerReviewReasons(e,speakers).length).length}</label>
       {/* list / empty */}
       {filtered.length === 0 ? (
         <div className="empty-state">
@@ -75,14 +82,14 @@ export function EventList({
             <Icon name="list" size={24} />
           </div>
           <div className="empty-title">
-            {query ? "No matching events" : "No caption events"}
+            {query ? "No matching events" : reviewOnly ? "Speaker review complete" : "No caption events"}
           </div>
           <div className="empty-body">
             {query
               ? "Try a different search term."
-              : "Build your project from a transcript, or add events by hand."}
+              : reviewOnly ? "No captions match this review filter. Turn it off to see all captions." : "Build your project from a transcript, or add events by hand."}
           </div>
-          {!query && (
+          {!query && !reviewOnly && (
             <button className="primary" onClick={onNew} style={{ marginTop: 4 }}>
               <Icon name="plus" size={14} strokeWidth={2.4} />
               Create event
@@ -102,8 +109,8 @@ export function EventList({
               key={event.id}
               event={event}
               speakers={speakers}
-              isSelected={selectedEventId === event.id}
-              onSelect={() => onSelect(event.id)}
+              isSelected={selectedIds?.includes(event.id)??selectedEventId === event.id}
+              onSelect={additive => onSelect(event.id,additive)}
               onDelete={() => onDelete(event.id)}
             />
           ))}
