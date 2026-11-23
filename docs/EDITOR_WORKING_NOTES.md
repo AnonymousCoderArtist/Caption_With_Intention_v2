@@ -273,3 +273,8 @@ Publication verification: Python663passed/9skipped; frontend81passed; production
 ### Silent autosave and optional disk copy, local review
 
 Replaced automatic save banners with a tiny topbar icon; settings/recovery only open on click. Optional user-chosen JSON file uses serialized writes after permission, alongside browser autosave. Disk errors pause until reconnect, project changes/reload detach the target. Browser support is feature-detected, not universal. No cloud/sign-in/cost added.92frontend tests,production build/full browser acceptance and focused writable-stream readback passed. Native OS picker/user-visible disk path remains manually unverified. See docs/AUTOSAVE_RECOVERY.md for permission and close/crash limits. User approved publication at18:19IST.
+
+
+### Guide and portrait recheck, approved publication
+
+Optional8-topic in-app guide added,never auto-opens. Extended9:16 testing found detached boxes/overwrapped long captions. Proposed portrait-only timed one-line pages fix that fixture while changing full-sentence read-ahead; landscape unchanged. Real18s portrait analysis/import/UI render/play/download and synthetic long/overlap frames inspected.711Python/9skip,94frontend,build/full acceptance,zero dependency-audit findings. Overlap blocks can still exceed the lower20% safe area,ASR/speaker errors remain. See docs/GUIDE_AND_PORTRAIT_RECHECK.md. Approved for publication at18:34IST; do not claim everything complete or fully optimized.
