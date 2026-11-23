@@ -951,8 +951,9 @@ class CwiRenderer:
     ) -> list[tuple[CaptionEvent, int]]:
         """Split an event into (child event, margin_v_extra) caption lines.
 
+        Portrait uses sequential one-line pages at absolute word onsets.
         Returns [(event, 0)] when the caption fits the work area on one
-        line. Otherwise splits the words into two groups (spec 2.4.2: no
+        line. Landscape splits the words into two groups (spec 2.4.2: no
         more than two lines on a frame); the first group stacks above the
         second by line height plus spacing.
         """
@@ -969,6 +970,38 @@ class CwiRenderer:
             self._estimate_span_width(word.text + " ", span["size_px"], span["width"])
             for word, span in zip(words, composed)
         ]
+        if screen_height > screen_width:
+            # Narrow portrait frames cannot safely retain an arbitrarily long
+            # read-ahead sentence on a second line. Page at word boundaries,
+            # retaining absolute word times and the original input project.
+            groups = []
+            begin, used = 0, 0.0
+            for i, width in enumerate(widths):
+                if i > begin and used + width > available:
+                    groups.append((begin, i))
+                    begin, used = i, 0.0
+                used += width
+            groups.append((begin, len(words)))
+            if len(groups) > 1:
+                pages = []
+                for index, (begin, end) in enumerate(groups):
+                    start_time = event.start if index == 0 else words[begin].start
+                    end_time = event.end if index == len(groups) - 1 else words[end].start
+                    text = "".join(span["text"] for span in composed[begin:end]).strip()
+                    if begin:
+                        boundary = text.find(words[begin].text)
+                        if boundary >= 0:
+                            text = text[boundary:]
+                    if end < len(words):
+                        separator = composed[end]["text"]
+                        boundary = separator.find(words[end].text)
+                        if boundary >= 0:
+                            text += separator[:boundary].rstrip()
+                    pages.append((event.model_copy(update={
+                        "words": words[begin:end], "text": text,
+                        "start": start_time, "end": end_time,
+                    }), 0))
+                return pages
         if sum(widths) <= available:
             return [(event, 0)]
 
@@ -1498,6 +1531,7 @@ class CwiRenderer:
                 continue
             if other.start == event.start and idx > my_idx:
                 continue
+            other_lift = 0
             for child, child_extra in self._split_event_lines(
                 other, screen_width, screen_height
             ):
@@ -1508,9 +1542,12 @@ class CwiRenderer:
                     )
                 else:
                     max_sz = base_fs
-                lift += (
-                    child_extra + round(max_sz * 1.5) + 2 * box_padding + gap
-                )
+                height = child_extra + round(max_sz * 1.5) + 2 * box_padding + gap
+                if screen_height > screen_width:
+                    other_lift = max(other_lift, height)
+                else:
+                    other_lift += height
+            lift += other_lift
         return lift
 
     def _build_sfx_line(

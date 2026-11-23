@@ -14,3 +14,5 @@ it('warns about a materially different source duration but allows frame-rounding
  expect(renderWarnings(p,{width:p.video.width,height:p.video.height,duration:60}).join(' ')).toContain('matching video');
  expect(renderWarnings({...p,events:[]},{width:p.video.width,height:p.video.height,duration:45.04}).join(' ')).not.toContain('matching video');
 });
+
+it('warns about portrait paging and safe-area limits',()=>{const p=createDemoProject();expect(renderWarnings(p,{width:540,height:960,duration:p.video.duration}).join(' ')).toContain('Portrait layout pages');});

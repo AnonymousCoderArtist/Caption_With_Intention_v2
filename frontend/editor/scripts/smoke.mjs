@@ -21,10 +21,23 @@ try{
  await ready(`http://127.0.0.1:${uiPort}`);await ready(`http://127.0.0.1:${port}/api/get_project`);
  browser=await chromium.launch({headless:true,...(process.env.CWI_CHROME?{executablePath:process.env.CWI_CHROME}:{}),args:['--no-sandbox']});
  const page=await browser.newPage({viewport:{width:1600,height:1050},...(process.env.CWI_SMOKE_RECORD?{recordVideo:{dir:folder,size:{width:1280,height:840}}}:{})}),errors=[];
- page.on('pageerror',e=>errors.push(e.message));
+ page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
  await page.goto(`http://127.0.0.1:${uiPort}`);
+ assert.equal(await page.locator('.editor-guide').count(),0);
+ await page.getByRole('button',{name:'Editor guide',exact:false}).click();
+ for(let i=0;i<7;i++)await page.getByRole('button',{name:'Next',exact:true}).click();
+ await page.getByRole('button',{name:'Done',exact:true}).click();
+ assert.equal(await page.locator('.editor-guide').count(),0);
+
  await page.locator('input[aria-label="Open project JSON"]').setInputFiles(path.join(folder,'project.cwi.json'));
  await page.locator('.app-shell').waitFor();
+ await page.getByRole('button',{name:'Guide',exact:true}).click();
+ await page.getByRole('button',{name:'3. Fix words and timing',exact:true}).click();
+ await page.getByRole('button',{name:'Show text workspace',exact:true}).click();
+ assert.equal(await page.locator('.app-shell').getAttribute('data-workspace'),'text');
+ await page.keyboard.press('Escape');
+ assert.equal(await page.locator('.editor-guide').count(),0);
+ await page.getByRole('navigation',{name:'Editor workspaces'}).getByRole('button',{name:'Edit',exact:true}).click();
  await page.locator('input[aria-label="Import local video"]').setInputFiles(path.join(folder,'source.mp4'));
  await page.locator('.ev-card').first().focus();await page.keyboard.press('Space');assert.equal(await page.locator('.ev-card').first().getAttribute('aria-pressed'),'true');
  await page.getByTitle('Play',{exact:true}).click();await page.waitForTimeout(300);await page.getByTitle('Pause',{exact:true}).click();
@@ -77,7 +90,7 @@ try{
  await page.waitForTimeout(400);await page.reload();await page.getByRole('button',{name:'Open editor',exact:true}).click();
  await page.locator('.ev-card').first().click();await page.getByRole('button',{name:'Reopen speaker review',exact:true}).waitFor();
  assert.equal(await page.locator('.ev-card').count(),1);
- page.once('dialog',d=>d.accept());await page.locator('input[aria-label="Open project JSON"]').setInputFiles(projectPath);await page.locator('.ev-card').first().click();await page.getByRole('button',{name:'Reopen speaker review',exact:true}).waitFor();await page.locator('input[aria-label="Import local video"]').setInputFiles(path.join(folder,'source.mp4'));
+ await page.locator('input[aria-label="Open project JSON"]').setInputFiles(projectPath);await page.locator('.ev-card').first().click();await page.getByRole('button',{name:'Reopen speaker review',exact:true}).waitFor();await page.locator('input[aria-label="Import local video"]').setInputFiles(path.join(folder,'source.mp4'));
  let dropped=false;await page.route('**/api/render/*/status',async route=>{if(!dropped){dropped=true;await route.abort();}else await route.continue();});
  let lostCreateResponse=false;
  await page.route('**/api/render/create',async route=>{if(!lostCreateResponse){lostCreateResponse=true;await route.fetch();await route.abort();}else await route.continue();});
@@ -90,7 +103,7 @@ try{
  const href=await page.getByRole('link',{name:'Download MP4'}).getAttribute('href');const response=await page.request.get(`http://127.0.0.1:${uiPort}${href}`);assert.equal(response.status(),200);await writeFile(path.join(folder,'captioned.mp4'),await response.body());
  await page.screenshot({path:path.join(folder,'desktop.png')});await page.setViewportSize({width:390,height:844});await page.waitForTimeout(150);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),390);await page.screenshot({path:path.join(folder,'mobile.png')});
  await page.getByRole('button',{name:'Close',exact:true}).click();await page.setViewportSize({width:1600,height:1050});
- page.once('dialog',d=>d.accept());await page.locator('input[aria-label="Open project JSON"]').setInputFiles(path.join(folder,'portrait.cwi.json'));
+ await page.locator('input[aria-label="Open project JSON"]').setInputFiles(path.join(folder,'portrait.cwi.json'));
  await page.locator('input[aria-label="Import local video"]').setInputFiles(path.join(folder,'portrait.mp4'));
  await page.route('**/api/render/*/source',route=>route.abort());
  await page.getByTitle('Render captioned MP4 locally').click();await page.getByRole('button',{name:'Start local render',exact:true}).click();
@@ -121,7 +134,7 @@ try{
  const long=structuredClone(data);long.project_name='Two-hour timeline check';long.video.duration=7200;
  long.events=Array.from({length:1000},(_,i)=>({...data.events[0],id:`long_${i}`,start:i*7.1,end:i*7.1+2,text:`Caption ${i}`,words:[]}));
  const longPath=path.join(folder,'long.cwi.json');await writeFile(longPath,JSON.stringify(long));
- page.once('dialog',d=>d.accept());await page.locator('input[aria-label="Open project JSON"]').setInputFiles(longPath);
+ await page.locator('input[aria-label="Open project JSON"]').setInputFiles(longPath);
  await page.waitForFunction(()=>document.querySelectorAll('.tl-clip').length===1000);
  await page.locator('.ev-card').last().click();const lateEnd=page.locator('.inspector .paired-fields input[type="number"]').nth(1);const lateValue=Number(await lateEnd.inputValue());assert.ok(lateValue>600);await lateEnd.fill(String(lateValue+.5));await lateEnd.blur();await page.waitForFunction(expected=>Number(document.querySelectorAll('.inspector .paired-fields input[type=number]')[1].value)===expected,lateValue+.5);
  const lateSave=page.waitForEvent('download');await page.getByRole('button',{name:'Save project',exact:true}).first().click();const latePath=path.join(folder,'late-edit.cwi.json');await(await lateSave).saveAs(latePath);assert.equal(JSON.parse(await readFile(latePath,'utf8')).events[999].end,lateValue+.5);

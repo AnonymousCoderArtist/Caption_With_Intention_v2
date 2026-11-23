@@ -9,3 +9,9 @@ describe('renderer nominal layout',()=>{
   const lines=captionLines(long,1280,720);expect(lines).toHaveLength(2);expect(lines.flat()).toEqual(words);expect(lines[0].length).toBeGreaterThan(0);expect(lines[1].length).toBeGreaterThan(0);
  });
 });
+
+it('pages narrow portrait captions in source time without losing words',()=>{
+ const e=createDemoProject().events[0];const words=Array.from({length:20},(_,i)=>({...e.words[0],text:'emphasis',start:i,end:i+.8}));const long={...e,start:0,end:20,words,text:words.map(w=>w.text).join(' ')};
+ const pages=captionLines(long,540,960);expect(pages.length).toBeGreaterThan(2);expect(pages.flat()).toEqual(words);
+ for(const page of pages)expect(captionLines(long,540,960,page[0].start)).toEqual([page]);
+});

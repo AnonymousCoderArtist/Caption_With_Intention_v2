@@ -522,3 +522,5 @@ Disk autosave limits and evidence documented after user approval.92frontend test
 ### Approved guide and portrait round
 
 User approved at18:34IST,portrait adaptation reconfirmed18:36IST. Optional8-topic guide published first.711Python/9skip,94frontend,build/full browser acceptance pass. New words-per-page setting and visual speaker research are separate uncommitted rounds.
+
+Portrait-only source-time one-line paging fixes detached boxes/overwrapped long read-ahead sentences. Preview matches page selection. Landscape unchanged. This is an approved adaptation,not certified official portrait behavior. Overlap/large manual typography can exceed safe area and preflight warns.

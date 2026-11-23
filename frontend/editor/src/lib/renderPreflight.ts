@@ -2,6 +2,7 @@ import type {Project} from '@/types/project';
 export interface MediaInfo {width:number;height:number;duration:number}
 export function renderWarnings(project:Project,media:MediaInfo):string[] {
  const messages:string[]=[];
+ if(media.height>media.width&&project.events.length)messages.push('Portrait layout pages long dialogue captions in source time rather than stacking an oversized sentence. Review the final MP4: very long unbroken words, large manual type and simultaneous speakers or sound can still exceed the safe area.');
  if(media.width!==project.video.width||media.height!==project.video.height)
   messages.push(`Source is ${media.width}×${media.height}, sequence is ${project.video.width}×${project.video.height}. Final captions use source dimensions, so wrapping and placement may differ from the editor.`);
  if(Number.isFinite(media.duration)&&project.video.duration>0&&Math.abs(media.duration-project.video.duration)>Math.max(.5,project.video.duration*.01))
