@@ -15,6 +15,10 @@ Published audit baseline:dd48bc9. Reviewed resource work in `docs/LONG_VIDEO_RES
 
 Verification:710Python passed/9skipped,82frontend,build and focused lint pass. Real2-hour synthetic audio was extracted in125windows with cancel/resume; diagnostic peak self RSS~41MiB and max float waveform3.84MB (not model memory). Separate45s small.en+Nemotron run sampled~923MiB process-tree RSS and14s elapsed with2compute threads.23events/7model IDs/21review flags, not certified identities or WER. Full2h model inference, hard RAM/CPU caps, text-based seam reconciliation and weak-PC testing remain open. Actual editor and output frame inspected. No UI code changed in this round.
 
+## Approved browser autosave recovery round,17:49
+
+Published HEAD:d321342 (long-video and achievements). User approved browser autosave publication at18:11IST. Silent-icon UI and optional disk save will be a separate local review. Existing300ms local save now has visible saved/error state, manual flush, lifecycle flush, one best-effort previous valid snapshot, explicit restore and corrupt-primary fallback notice. JSON rescue remains available under quota failure.87frontend tests/build/full browser acceptance and focused recovery journey pass. See `docs/AUTOSAVE_RECOVERY.md` for durability limits; no promise of zero data loss.
+
 ## Branch Status
 
 ### Approved stability revision (2026-11-22)
