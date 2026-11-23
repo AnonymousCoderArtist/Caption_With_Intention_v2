@@ -283,3 +283,7 @@ Optional8-topic in-app guide added,never auto-opens. Extended9:16 testing found 
 ### Portrait words-at-a-time setting, approved
 
 Auto fit remains the default. Portrait-only selector offers a maximum1..50words per page,including3/5/10. Width can force fewer words,never more than the maximum. Page changes follow first-word onsets; final page ends at the caption end. Stored project includes the count; preview and final render use it. Landscape ignores it. Count validation rejects fractional/out-of-range values. A guide workspace-jump capitalization bug found in this round was also fixed.712Python/9skip,96frontend,build/full browser acceptance pass. Actual18s portrait UI render with3words selected inspected in preview and MP4. Approved18:43IST;long words/manual size/overlap safe-area limits remain.
+
+### Speaker context review,approved19:17IST
+
+Optional OFF-by-default review-range panel merges flagged intervals plus1.5scontext,clamps to source,and offers watch/stop. Inspector adds Watch nearby context. Explicit cues are not calibrated identity confidence;ASR text confidence remains separate.98frontend/build/full acceptance pass. No face model or automatic speaker assignment. Current difficult-project padded coverage95-98%,so selective gating would not meaningfully reduce face-model work there. See docs/SPEAKER_CONTEXT_REVIEW.md.
