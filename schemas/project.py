@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class SpeakerCategory(str, Enum):
@@ -53,10 +53,20 @@ class Word(BaseModel):
     # single syllable (user rule 2026-11-22: scaled-up text follows
     # the wave too). Filled by the analysis pipeline.
     letter_pitches: Optional[list[Optional[float]]] = None
+    character_colors: Optional[list[Optional[str]]] = None
     # Word-level pitch in Hz: the word's spot on the event's pitch
     # wave (launch film: the whole caption line rides one continuous
     # voice-pitch ripple). Filled by the analysis pipeline.
     pitch_hz: Optional[float] = None
+
+
+    @field_validator("character_colors")
+    @classmethod
+    def valid_character_colors(cls, colors):
+        import re
+        if colors is not None and any(c is not None and not re.fullmatch(r"#[0-9a-fA-F]{6}", c) for c in colors):
+            raise ValueError("Character colors must be six-digit hex values or null")
+        return colors
 
 
 class Style(BaseModel):

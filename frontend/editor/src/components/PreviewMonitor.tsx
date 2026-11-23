@@ -44,6 +44,7 @@ function Caption({ event, project, time, height, onSelect, selected }: {
       const weight = event.style.weight_mode === 'manual' ? event.style.weight : word.weight;
       const spoken = time >= word.start;
       const width = spoken && time < word.end ? targetWidth : 100;
+      let colorIndex=-1;
       return <span className="composition-word" key={wi} style={{ fontSize: size * ASS_EM_SCALE, height: base, lineHeight: `${base}px`, position: 'relative', top: event.style.box_padding * height / project.video.height,
         fontWeight: spoken && time < word.end && weight >= 700 ? 700 : 400,
         fontStyle: spoken && (word.italic || event.off_camera || speaker?.off_camera || event.style.italic) ? 'italic' : 'normal',
@@ -53,8 +54,9 @@ function Caption({ event, project, time, height, onSelect, selected }: {
         width: width===100 ? undefined : nominalWidth(word.text.trim(),size*ASS_EM_SCALE,width),
         opacity: word.opacity }}>
         <span style={{display:'inline-block',transform:width===100?undefined:`scaleX(${width/100})`,transformOrigin:'left center'}}>{chars.map((char, j) => {
+          if(! /\s/.test(char))colorIndex++;
           const colored = event.type !== 'music' && (!timed || letterSpoken(word, j, chars.length, time));
-          const color = event.type==='music' ? 'rgba(255,255,255,.9)' : colored ? (speaker?.color ?? (event.speaker_id ? word.color : '#fff')) : `rgba(255,255,255,${event.style.read_ahead_opacity})`;
+          const color = event.type==='music' ? 'rgba(255,255,255,.9)' : colored ? (word.character_colors?.[colorIndex]??speaker?.color ?? (event.speaker_id ? word.color : '#fff')) : `rgba(255,255,255,${event.style.read_ahead_opacity})`;
           const lift = !timed ? 0 : letterLift(word, j, chars.length, time, base, event.style.pop_scale);
           return <span key={j} className="composition-letter" style={{ color, transform: `translateY(${-lift}px)` }}>{char}</span>;
         })}</span>

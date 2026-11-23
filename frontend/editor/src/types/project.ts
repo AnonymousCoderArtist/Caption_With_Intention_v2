@@ -47,6 +47,7 @@ export interface Word {
   syllables: WordSyllable[] | null;
   pitch_hz?: number | null;
   letter_pitches?: (number | null)[] | null;
+  character_colors?: (string | null)[] | null;
 }
 
 export interface WordSyllable {

@@ -11,6 +11,7 @@ export function styleError(s: Style): string | null {
 }
 export function wordsError(words:Word[]):string|null {
  for(const w of words){
+  if(w.character_colors!=null&&(!Array.isArray(w.character_colors)||w.character_colors.some(c=>c!==null&&(typeof c!=='string'||!/^#[0-9a-f]{6}$/i.test(c)))))return 'Character colors must be six-digit hex values or null.';
   if(!finite(w.size_pct)||w.size_pct<=0||!finite(w.weight)||w.weight<100||w.weight>1000||!finite(w.width)||w.width<25||w.width>200)return 'Word size, weight or width is outside the supported range.';
   if(!finite(w.opacity)||w.opacity<0||w.opacity>1)return 'Word opacity must be between 0 and 1.';
   if(w.pitch_hz!=null&&(!finite(w.pitch_hz)||w.pitch_hz<0))return 'Pitch must be a non-negative finite number.';

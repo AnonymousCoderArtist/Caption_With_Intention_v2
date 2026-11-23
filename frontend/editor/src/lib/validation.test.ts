@@ -75,3 +75,17 @@ it('replaces only the selected repeated word and keeps mapped punctuation',async
  expect((await c.getEvents()).data![0].text).toBe('"go, stay!"');
  await c.undo();expect((await c.getEvents()).data![0].text).toBe('"go, go!"');
 });
+
+it('roundtrips character colors and rejects malformed overrides atomically',async()=>{
+ const p=createDemoProject();p.events[0].words[0].character_colors=[null,'#FF0000'];
+ expect(parseProject(JSON.stringify(p)).events[0].words[0].character_colors).toEqual([null,'#FF0000']);
+ const c=new DemoClient(p);expect((await c.updateWord(p.events[0].id,0,{character_colors:['bad']})).success).toBe(false);expect((await c.canUndo()).data!.can_undo).toBe(false);
+});
+it('validates video grades before recording history',async()=>{
+ const c=new DemoClient();expect((await c.updateProject({video:{brightness:2}})).success).toBe(false);expect((await c.canUndo()).data!.can_undo).toBe(false);
+});
+it('clears stale character overrides when edited word text changes',async()=>{
+ const p=createDemoProject();const e=p.events[0];e.words[0].character_colors=['#ff0000'];const c=new DemoClient(p);
+ await c.updateWord(e.id,0,{text:'changed'});expect((await c.getEvents()).data![0].words[0].character_colors).toBeNull();
+ await c.undo();expect((await c.getEvents()).data![0].words[0].character_colors).toEqual(['#ff0000']);
+});

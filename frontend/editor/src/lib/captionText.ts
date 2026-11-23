@@ -15,7 +15,7 @@ export function displayWords(event:CaptionEvent):Word[] {
  if(event.words.length&&event.text){
   let cursor=0;const positions:{start:number;end:number}[]=[];
   for(const word of event.words){const start=event.text.indexOf(word.text,cursor);if(start<0)break;cursor=start+word.text.length;positions.push({start,end:cursor});}
-  if(positions.length===event.words.length)words=event.words.map((word,i)=>({...word,text:
+  if(positions.length===event.words.length)words=event.words.map((word,i)=>({...word,character_colors:word.character_colors?[...Array(Array.from(i===0?event.text.slice(0,positions[0].start):'').filter(c=>! /\s/.test(c)).length).fill(null),...word.character_colors]:undefined,text:
    (i===0?event.text.slice(0,positions[0].start):'')+word.text+
    event.text.slice(positions[i].end,i+1<positions.length?positions[i+1].start:event.text.length).trimEnd()}));
  }

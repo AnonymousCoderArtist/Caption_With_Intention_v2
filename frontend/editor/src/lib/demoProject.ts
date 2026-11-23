@@ -455,7 +455,7 @@ export class DemoClient {
       return this.err('Event end must be after its start');
     if (updates.text !== undefined && !updates.words) {
       const tokens = updates.text.trim().split(/\s+/).filter(Boolean);
-      next.words = tokens.length === e.words.length ? e.words.map((word, i) => ({...word, text: tokens[i]}))
+      next.words = tokens.length === e.words.length ? e.words.map((word, i) => ({...word, text: tokens[i],character_colors:tokens[i]===word.text?word.character_colors:null}))
         : tokens.map((text, i) => w(text, next.start + i * (next.end-next.start)/tokens.length, next.start + (i+1)*(next.end-next.start)/tokens.length, '#FFFFFF'));
     }
     if ((updates.start !== undefined || updates.end !== undefined) && !updates.words && updates.text === undefined) {
@@ -490,6 +490,7 @@ export class DemoClient {
     const words = e.words.map((word,i) => {
       if(i!==wordIndex)return word;
       const next={...word,...updates};
+      if(updates.text!==undefined&&updates.text!==word.text&&updates.character_colors===undefined)next.character_colors=null;
       if((updates.start!==undefined||updates.end!==undefined)&&updates.syllables===undefined&&word.syllables){
         const retime=(t:number)=>next.start+(t-word.start)*(next.end-next.start)/Math.max(.001,word.end-word.start);
         next.syllables=word.syllables.map(s=>({...s,start:retime(s.start),end:retime(s.end)}));

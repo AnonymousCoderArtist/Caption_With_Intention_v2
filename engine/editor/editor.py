@@ -47,6 +47,7 @@ _WORD_FIELDS = {
     "manual_override",
     "syllables",
     "letter_pitches",
+    "character_colors",
     "pitch_hz",
 }
 
@@ -370,7 +371,7 @@ class Editor:
             tokens = data["text"].split()
             old_words = before["words"]
             if len(tokens) == len(old_words):
-                data["words"] = [{**w, "text": token} for w, token in zip(old_words, tokens)]
+                data["words"] = [{**w, "text": token, "character_colors": w.get("character_colors") if token == w["text"] else None} for w, token in zip(old_words, tokens)]
             else:
                 # Text-count changes explicitly redistribute timing across the event.
                 span = data["end"] - data["start"]
@@ -453,6 +454,10 @@ class Editor:
         if not all(math.isfinite(v) for v in (event.start, event.end)) or event.start < 0 or event.end <= event.start:
             raise ValueError("Event end must be after its start, with finite non-negative times")
         for word in event.words:
+            if word.character_colors is not None:
+                import re
+                if any(c is not None and not re.fullmatch(r"#[0-9a-fA-F]{6}", c) for c in word.character_colors):
+                    raise ValueError("Character colors must be six-digit hex values or null")
             if not all(math.isfinite(v) for v in (word.start, word.end)) or not (event.start <= word.start < word.end <= event.end + 1e-6):
                 raise ValueError("Words must have positive duration inside the event")
             if (not math.isfinite(word.size_pct) or word.size_pct <= 0
@@ -490,6 +495,8 @@ class Editor:
             return False
         words = [w.model_dump() for w in event.words]
         old_word = copy.deepcopy(words[word_index])
+        if "text" in kwargs and kwargs["text"] != old_word["text"] and "character_colors" not in kwargs:
+            words[word_index]["character_colors"] = None
         words[word_index].update({k: v for k, v in kwargs.items() if k in Word.model_fields})
         if ("start" in kwargs or "end" in kwargs) and "syllables" not in kwargs and old_word.get("syllables"):
             current = words[word_index]

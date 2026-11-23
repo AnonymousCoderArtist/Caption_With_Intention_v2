@@ -81,6 +81,15 @@ def test_wrapped_caption_keeps_punctuation_outside_word_tokens():
     assert sum(child.text.count(",") for child, _ in lines) == 11
 
 
+def test_character_color_reaches_spoken_letter_ass_only():
+    event = make_event()
+    event.words[0].character_colors = [None, "#FF0000", None]
+    renderer = CwiRenderer(Project(events=[event]))
+    ass = renderer.render_ass("not-a-video.mp4")
+    assert "\\c&H0000FF&" in ass
+    assert event.words[0].character_colors == [None, "#FF0000", None]
+
+
 def test_video_grade_precedes_subtitles_so_caption_colors_stay_unchanged(tmp_path):
     project = Project()
     project.video.brightness = .1

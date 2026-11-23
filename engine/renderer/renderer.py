@@ -1260,7 +1260,14 @@ class CwiRenderer:
                     if abs(fs1 - fs0) > 0.001:
                         size_tags += f"\\t(0,{max(1, round(duration_ms))},\\fs{fs1:.3f})"
                     runs: list[list] = []
+                    visible_text = "".join(c for c in span["text"] if not c.isspace())
+                    token_text = "".join(c for c in span["word"].text if not c.isspace())
+                    token_offset = max(0, visible_text.find(token_text))
                     for j2, chunk in enumerate(units):
+                        custom_colors = span["word"].character_colors or []
+                        color_index = j2 - token_offset
+                        custom = custom_colors[color_index] if 0 <= color_index < len(custom_colors) else None
+                        letter_color = ("&H" + custom[5:7] + custom[3:5] + custom[1:3]).upper() if custom else speaker_color
                         e0, e1 = recs[j2] if j2 < len(recs) else (0.0, 0.0)
                         if i == cur_word:
                             # Letter-granular sync (their film colors
@@ -1278,19 +1285,19 @@ class CwiRenderer:
                             )
                             t_rel = (t_on - start) * 1000.0
                             if t_on < start - 1e-9:
-                                tag = f"\\c{speaker_color}&{span_ital}" + size_tags
+                                tag = f"\\c{letter_color}&{span_ital}" + size_tags
                             elif t_rel >= duration_ms:
                                 tag = white + size_tags
                             else:
                                 tag = white + size_tags + (
                                     f"\\t({int(t_rel)},"
                                     f"{int(t_rel + LETTER_SWEEP_FADE_MS)},"
-                                    f"\\c{speaker_color}&\\alpha&H00&{span_ital})"
+                                    f"\\c{letter_color}&\\alpha&H00&{span_ital})"
                                 )
                         elif cur_word is None or i > cur_word:
                             tag = white + size_tags
                         else:
-                            tag = f"\\c{speaker_color}&{span_ital}" + size_tags
+                            tag = f"\\c{letter_color}&{span_ital}" + size_tags
                         th0 = math.degrees(e0 / org_distance)
                         th1 = math.degrees(e1 / org_distance)
                         if abs(e0) > 1e-6 or abs(e1) > 1e-6:
@@ -1842,9 +1849,6 @@ class CwiRenderer:
             cmd.extend(["-c:a", self.audio_codec])
         else:
             cmd.append("-an")
-        grade = self.project.video
-        if grade.brightness != 0 or grade.contrast != 1 or grade.saturation != 1:
-            vf_filter = f"eq=brightness={grade.brightness}:contrast={grade.contrast}:saturation={grade.saturation}," + vf_filter
         if output_path.suffix.lower() == ".mp4":
             cmd.extend(["-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart"])
 

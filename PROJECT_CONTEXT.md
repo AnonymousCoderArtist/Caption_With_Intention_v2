@@ -462,3 +462,7 @@ Workspace tabs: Edit, Text, Color, Speakers and Export are focused views of one 
 ### Approved polish publication
 
 Source-video brightness, contrast and saturation now persist and reach final FFmpeg output before subtitles. Browser CSS grade is approximate. Caption colors stay unchanged by the video grade.
+
+### Approved polish publication
+
+Per-visible-character spoken color overrides added to dialogue, overlap and custom captions, including final ASS output, JSON validation, reset and buffered color input. Replacing word text clears positional overrides; undo restores them. Per-character fonts/sizes and complex grapheme shaping are not promised.

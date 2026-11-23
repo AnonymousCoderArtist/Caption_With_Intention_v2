@@ -1,6 +1,7 @@
 import { useId } from "react";
 import {speakerReviewReasons} from "@/lib/speakerReview";
 import { DraftNumber } from "./DraftNumber";
+import {DraftColor} from "./DraftColor";
 import { DraftText } from "./DraftText";
 import type { CaptionEvent, Speaker, Word } from "@/types/project";
 import { EVENT_TYPES } from "@/lib/theme";
@@ -371,6 +372,7 @@ export function InspectorPanel({
                     <label>Italic<input type="checkbox" checked={w2.italic} onChange={e => onUpdateWord(event.id,idx,{italic:e.target.checked})}/></label>
                     <label>Manual override<input type="checkbox" checked={w2.manual_override} onChange={e => onUpdateWord(event.id,idx,{manual_override:e.target.checked})}/></label>
                   </div>
+                  {['dialogue','speaker_overlap','custom'].includes(event.type)&&<div className="character-colors"><p className="field-note">Character color overrides the speaker color only when spoken. Reset returns to speaker color. Editing this word's text clears its character overrides.</p>{Array.from(w2.text).filter(c=>! /\s/.test(c)).map((char,ci)=><label key={ci} title={`Character ${ci+1}: ${char}`}><span>{char===' '?'␣':char}</span><DraftColor aria-label={`Word ${idx+1} character ${ci+1} color`} value={w2.character_colors?.[ci]??w2.color} onCommit={color=>{const colors=[...(w2.character_colors??Array(Array.from(w2.text).filter(c=>! /\s/.test(c)).length).fill(null))];colors[ci]=color;onUpdateWord(event.id,idx,{character_colors:colors});}}/></label>)}<button className="subtle" onClick={()=>onUpdateWord(event.id,idx,{character_colors:null})}>Reset character colors</button></div>}
                   <label className="json-field">Syllables (JSON)<textarea aria-label={`Word ${idx+1} syllables JSON`} key={JSON.stringify(w2.syllables)} defaultValue={JSON.stringify(w2.syllables,null,2)} onBlur={e => {try {const value=JSON.parse(e.target.value);if(value!==null&&(!Array.isArray(value)||value.some((s:any)=>typeof s.text!=='string'||!Number.isFinite(s.start)||!Number.isFinite(s.end)||s.start<w2.start||s.end>w2.end||s.end<=s.start)))throw new Error();onUpdateWord(event.id,idx,{syllables:value});e.target.setCustomValidity('');}catch{e.target.setCustomValidity('Use null or an array of text/start/end syllables inside this word.');e.target.reportValidity();}}}/></label>
                   <label className="json-field">Letter pitches (JSON)<textarea aria-label={`Word ${idx+1} letter pitches JSON`} key={JSON.stringify(w2.letter_pitches)} defaultValue={JSON.stringify(w2.letter_pitches??null)} onBlur={e => {try{const value=JSON.parse(e.target.value);if(value!==null&&(!Array.isArray(value)||value.some((v:any)=>v!==null&&(!Number.isFinite(v)||v<0))))throw new Error();onUpdateWord(event.id,idx,{letter_pitches:value});e.target.setCustomValidity('');}catch{e.target.setCustomValidity('Use null or an array of non-negative pitches/nulls.');e.target.reportValidity();}}}/></label>
                 </details>

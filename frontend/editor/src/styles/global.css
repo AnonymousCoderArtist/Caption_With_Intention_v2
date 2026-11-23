@@ -2103,3 +2103,5 @@ button:focus-visible, [role="button"]:focus-visible, [role="slider"]:focus-visib
 
 .grade-panel {display:flex;align-items:center;gap:16px;padding:12px 20px;flex-wrap:wrap;border-bottom:1px solid var(--border);}
 .grade-panel label {display:flex;gap:6px;align-items:center;font-size:12px;text-transform:capitalize;}.grade-panel input{width:70px;}.grade-panel small{color:var(--text-400);}
+
+.character-colors{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0;}.character-colors p{width:100%;}.character-colors label{display:flex;flex-direction:column;align-items:center;gap:4px;}.character-colors input{width:28px;height:25px;padding:1px;}

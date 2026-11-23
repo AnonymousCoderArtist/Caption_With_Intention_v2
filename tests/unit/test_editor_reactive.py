@@ -239,3 +239,12 @@ def test_deleting_speaker_reopens_checked_event_review_and_undo_restores():
     e.undo()
     assert e.project.events[0].speaker_id == speaker.id
     assert e.project.events[0].speaker_reviewed
+
+
+def test_word_text_change_clears_character_overrides_and_undo_restores():
+    e = editor()
+    e.project.events[0].words[0].character_colors = ["#ff0000"]
+    e.update_word("evt_001", 0, text="changed")
+    assert e.project.events[0].words[0].character_colors is None
+    e.undo()
+    assert e.project.events[0].words[0].character_colors == ["#ff0000"]
