@@ -421,3 +421,39 @@ This project implements the Caption With Intention design system as described in
 - **Third-party dependencies**: Each verified individually for license compatibility
 
 The design system is implemented as an open-source automation tool. Community contributions are welcome.
+
+## Editing and rendering a saved project
+
+The browser editor opens a canonical `.cwi.json` project and a matching local video separately. Video stays local and must be selected again after a reload. Save Project downloads updated JSON. Render video sends the selected source to the local Python service, shows encoding progress and offers a captioned MP4 download. No cloud render is used. Start the API with the editor for this feature.
+
+From the repo root, burn the edited captions into the source video:
+
+```sh
+uv run python -m engine.renderer saved-project.cwi.json matching-source.mp4 captioned.mp4
+```
+
+FFmpeg must be installed. The command uses the bundled Roboto Flex font and refuses to replace an existing output unless you add `--overwrite`. It never replaces the source video. Run `uv run python -m engine.renderer --help` for options.
+
+The browser composition is an editing approximation. Inspect the final FFmpeg video for font shaping, caption wrapping and overlap fidelity. See [editor working notes](docs/EDITOR_WORKING_NOTES.md) for current capabilities and limits.
+
+Shift/Ctrl/Cmd-click events or timeline clips for multi-selection. Batch move/delete can ripple later caption timings. This edits captions only, never source-video cuts. Speaker review filters short/unassigned/flagged turns; listen, correct the speaker, and mark the turn checked.
+
+### Editor acceptance check
+
+From `frontend/editor`, after `uv sync --extra dev` at the repository root:
+
+```bash
+npm ci
+npx playwright install chromium
+npm run test:smoke
+```
+
+FFmpeg and Python are required. Set `CWI_CHROME` to an installed Chrome/Chromium binary to skip the browser download. The check uses synthetic local media, starts isolated servers on ports 15173 and 18180, and stops them when done. It checks keyboard seeking, split/merge, bulk move, undo/redo, speaker review, JSON save/reopen, recovery from a dropped render-status request, local MP4 export/playback/download, a 390px layout, rotated portrait export, and a two-hour1000caption timeline. The printed temporary folder contains screenshots and output video. Change ports with `CWI_SMOKE_UI_PORT` and `CWI_SMOKE_PORT` if needed. Unit tests remain `npm test` and `uv run pytest`.
+
+
+The combined launcher is `uv run python engine/editor/start.py`. It binds the frontend port strictly and stops both processes on Ctrl+C, SIGTERM, or a child-server failure. If the default ports are occupied, choose both explicitly, for example `CWI_PORT=18181 CWI_UI_PORT=15174 uv run python engine/editor/start.py`. The frontend proxy follows the chosen API port. This remains a local development setup, not an internet-facing deployment.
+
+
+Open editor restores a valid browser-local session before querying the API, so starting the render service does not hide locally edited captions after reload. Open project JSON selects another saved project without replacing the backend's project. Download JSON for durable backups; if browser storage is full/unavailable, the warning remains visible and JSON download is still available. From `frontend/editor`, `npm start` uses the repository's uv environment for the combined launcher.
+
+Set `CWI_SMOKE_RECORD=1` to retain a browser video of the acceptance journey. It deliberately includes simulated transfer/status failures to verify recovery; these are test faults, not expected normal operation.

@@ -437,3 +437,20 @@ asr: faster-whisper>=1.0
 diarization: pyannote.audio>=3.0, silero-vad>=0.3
 gpu: torch>=2.0, torchaudio>=2.0, transformers>=4.40
 (Past unused hard deps — whisper, scipy, librosa, ffmpeg-python, pyyaml, click, rich, httpx — were removed in the uv migration; the code never imported them. ffmpeg is a system binary, not a Python dep.)
+
+## Editor rework in progress (2026-11-23, uncommitted)
+
+All morning changes remain local, with no commit or push. Detailed checks and reproduction notes are in `docs/EDITOR_WORKING_NOTES.md`. Older completed milestones and diagnostic counts above are historical snapshots, not this working tree's current verification totals.
+
+- Quiet black/white/gold editing shell, local-video composition driven by the source clock, stable per-letter motion, seek/frame-step/move/trim and visual group selection/drag. Empty New, JSON open/save, local autosave and stale-session guards work.
+- Caption-only batch move/delete/ripple and split/merge, each atomic with one undo. Word/syllable timing is preserved or proportionally retimed. Source video is never cut by these controls.
+- Speaker-review queue separates diarization coverage/competing turns from ASR confidence, supports listen/correct/check/bulk assignment, and preserves flags in saved JSON. This does not establish reliable speaker identity accuracy.
+- Local render panel transfers the selected source to the local Python service, shows progress/cancel/retry, plays the actual encoded MP4 with fullscreen, and downloads it. Source/sequence mismatch and captions beyond source trigger preflight warnings. Canonical CLI render is also available. MP4 uses H264/yuv420p/AAC/faststart; old outputs survive failed CLI replacement.
+- Preview/final font normalization, baseline and wrapping improved. Manual width reaches box companions; custom-opacity boxes remain one rectangle without seams. Browser bold spacing, music glyph fallback, shaping and overlap layout remain approximate. Final video inspection is required.
+- Repeatable `npm run test:smoke` generates synthetic media and verifies keyboard seeking, split/merge,move,undo/redo,speaker review,JSONsave/reopen,status-network recovery,realrender/decode/play/download,390px layout,rotated portrait output,two-hour1000caption ruler/scroll-follow,live-API local restore,and quota-failure JSON rescue. Setup in README. Playwright is development-only.
+- Latest integrated checkpoint:660Python passed,9skipped;frontend78passed,production build passes,npm audit0. New/rewritten Python service/structure/batch/review/CLI files pass focused lint. Unrelated legacy lint remains. Node20.19+or22.12+required.
+- Still open: broad browser/final parity, automatic diarization identity quality and overlapping ASR/SFX detection, full long-video orchestration, native project-file lifecycle and deployment/packaging. Current local HTTP server is for local development, not internet hosting.
+
+### 2026-11-23 approved editor publication
+
+User reviewed the simplified cards and colored speaker timeline lanes, then approved several logical commits and a push. Final local verification:660Python passed/9documented skips,78frontend passed,production build and browser acceptance pass. Exact preview/final parity and automatic identity accuracy remain unsigned.
