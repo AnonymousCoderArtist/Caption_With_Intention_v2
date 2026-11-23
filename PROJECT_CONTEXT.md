@@ -510,3 +510,7 @@ Sequential long-video/batch runner now preserves verified chunk progress, protec
 User approved the reviewed browser-local recovery at18:11IST. Storage utility preserves one previous valid copy and handles corrupt/quota state.87frontend tests,build/full acceptance passed before publication. Requested silent icon and optional disk saving are a separate next local round.
 
 Reviewed editor autosave status,manual/lifecycle flush,previous-snapshot restore and corruption notice published. These visible controls are immediately due a separate user-requested silent-icon redesign; disk autosave is not included yet.
+
+### Approved optional disk autosave publication
+
+User approved reviewed silent-icon/disk round at18:19IST. First focused commit adds serialized optional writable-file saving and tests.92frontend/build/full browser acceptance rechecked. Native OS chooser remains manually unverified; guide and full recheck are separate local work.
