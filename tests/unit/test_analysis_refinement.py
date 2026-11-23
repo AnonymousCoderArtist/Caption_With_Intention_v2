@@ -55,3 +55,51 @@ def test_sound_detection_rejects_invalid_configuration(kwargs):
     with pytest.raises(ValueError):
         detect_sound_regions(np.zeros(16000), speech_spans=[], **config)
 
+
+def result():
+    return {"transcription": TranscriptionResult(text="hello", words=[Word("hello", 0, .5)], duration=2)}
+
+
+def test_run_full_decodes_analysis_audio_once_for_all_three_stages():
+    pipe = SpeechPipeline()
+    data = result()
+    audio = (np.zeros(32000, dtype=np.float32), 16000)
+    with patch.object(pipe, "run_with_alignment", return_value=data), patch(
+        "engine.audio_analysis.io.load_analysis_audio", return_value=audio
+    ) as load:
+        pipe.run_full("not-a-source.mp4", detect_sounds=True)
+    load.assert_called_once()
+    assert data["sound_regions"] == []
+    assert data["intonation"] is not None
+
+
+def test_sound_suggestions_are_opt_in_and_never_get_invented_confidence():
+    pipe = SpeechPipeline()
+    data = result()
+    audio = (np.ones(32000, dtype=np.float32) * .2, 16000)
+    pipe.attach_sound_regions(data, "unused", classifier=MusicClassifier(), analysis_audio=audio)
+    payload = pipe.build_editor_payload(data)
+    music = next(entry for entry in payload["transcript"] if entry.get("type") == "music")
+    assert music["confidence"] is None
+    assert music["speaker_id"] is None
+    assert music["start"] >= .5
+    assert "Unverified" in music["notes"]
+    project = Editor().build_from_transcript(payload["transcript"])
+    sound = next(event for event in project.events if event.type.value == "music")
+    assert "Unverified" in sound.notes
+    assert sound.review_state.value == "pending"
+
+
+def test_project_duration_uses_max_end_not_last_sorted_start():
+    project = Editor().build_from_transcript([
+        {"text": "music", "start": 0, "end": 10, "type": "music"},
+        {"text": "hello", "start": 1, "end": 2},
+    ])
+    assert project.video.duration == 10
+
+
+def test_sound_regions_never_bridge_short_speech_gaps():
+    regions = detect_sound_regions(np.ones(2000), 1000, [(0.75, 1.0)], MusicClassifier())
+    assert len(regions) == 2
+    assert regions[0].end <= .75
+    assert regions[1].start >= 1.0

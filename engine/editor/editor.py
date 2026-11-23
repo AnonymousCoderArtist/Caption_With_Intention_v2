@@ -824,7 +824,7 @@ class Editor:
             width=video_width,
             height=video_height,
             fps=fps,
-            duration=transcript[-1]["end"] if transcript else 0.0,
+            duration=max((entry["end"] for entry in transcript), default=0.0),
         )
 
         # Add speakers if provided (M6: honor explicit ids so events can
@@ -894,7 +894,7 @@ class Editor:
                 "confidence",
                 "source_model",
                 "source_timestamp",
-                "manual_override",
+                "manual_override", "notes",
                 "off_camera", "speaker_review_required", "speaker_review_reasons", "speaker_coverage", "speaker_reviewed",
             ):
                 if key in entry:

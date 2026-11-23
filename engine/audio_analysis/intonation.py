@@ -23,8 +23,6 @@ from __future__ import annotations
 
 import logging
 import statistics
-import subprocess
-import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -310,47 +308,10 @@ class IntonationAnalyzer:
         WAV files are read directly; other containers (mp4, mp3, ...)
         are extracted to a temporary 16 kHz mono WAV via ffmpeg first.
         """
-        source = Path(source_path)
-        tmp_path: Optional[str] = None
-        try:
-            audio_path = source
-            if source.suffix.lower() != ".wav":
-                fd, tmp_path = tempfile.mkstemp(suffix=".wav")
-                import os
+        from engine.audio_analysis.io import load_analysis_audio
 
-                os.close(fd)
-                cmd = [
-                    "ffmpeg",
-                    "-y",
-                    "-i",
-                    str(source),
-                    "-ac",
-                    "1",
-                    "-ar",
-                    str(DEFAULT_SAMPLE_RATE),
-                    tmp_path,
-                ]
-                proc = subprocess.run(
-                    cmd, capture_output=True, timeout=120, check=False
-                )
-                if proc.returncode != 0:
-                    raise RuntimeError(
-                        f"ffmpeg audio extraction failed for {source}"
-                    )
-                audio_path = Path(tmp_path)
-
-            import soundfile as sf
-
-            audio, sample_rate = sf.read(str(audio_path), dtype="float32")
-            if audio.ndim > 1:
-                audio = audio.mean(axis=1)
-            return self.analyze(audio, sample_rate, words)
-        finally:
-            if tmp_path:
-                try:
-                    Path(tmp_path).unlink()
-                except OSError:
-                    pass
+        audio, sample_rate = load_analysis_audio(source_path, DEFAULT_SAMPLE_RATE)
+        return self.analyze(audio, sample_rate, words)
 
     def _analyze_word(
         self,

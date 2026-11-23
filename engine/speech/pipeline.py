@@ -255,6 +255,8 @@ class SpeechPipeline:
         self,
         result: dict,
         source_path: str | Path,
+        *,
+        analysis_audio: tuple | None = None,
     ) -> dict:
         """Add per-word intonation + CI typography to a pipeline result (M9).
 
@@ -280,7 +282,8 @@ class SpeechPipeline:
 
         logger.info("Running intonation analysis (M9)...")
         analyzer = IntonationAnalyzer()
-        intonation = analyzer.analyze_file(str(source_path), words)
+        intonation = (analyzer.analyze(*analysis_audio, words) if analysis_audio is not None
+                      else analyzer.analyze_file(str(source_path), words))
         result["intonation"] = intonation.to_dict()
         logger.info(
             "Intonation complete: %d words (%d unreliable)",
@@ -293,6 +296,8 @@ class SpeechPipeline:
         self,
         result: dict,
         source_path: str | Path,
+        *,
+        analysis_audio: tuple | None = None,
     ) -> dict:
         """Add syllables + per-syllable/per-letter pitch contours (M9/M10).
 
@@ -321,52 +326,10 @@ class SpeechPipeline:
             return result
 
         logger.info("Running syllable + pitch contour analysis (M9/M10)...")
-        # Decode the waveform once via the same ffmpeg extraction path
-        # IntonationAnalyzer.analyze_file uses.
-        import subprocess as _sp
-        import tempfile as _tf
+        from engine.audio_analysis.io import load_analysis_audio
 
-        import soundfile as sf
-
-        source = Path(source_path)
-        tmp_path = None
-        try:
-            audio_path = source
-            if source.suffix.lower() != ".wav":
-                fd, tmp_path = _tf.mkstemp(suffix=".wav")
-                import os
-
-                os.close(fd)
-                proc = _sp.run(
-                    [
-                        "ffmpeg",
-                        "-y",
-                        "-i",
-                        str(source),
-                        "-ac",
-                        "1",
-                        "-ar",
-                        str(DEFAULT_SAMPLE_RATE),
-                        tmp_path,
-                    ],
-                    capture_output=True,
-                    timeout=120,
-                    check=False,
-                )
-                if proc.returncode != 0:
-                    raise RuntimeError(
-                        f"ffmpeg audio extraction failed for {source}"
-                    )
-                audio_path = Path(tmp_path)
-            audio, sample_rate = sf.read(str(audio_path), dtype="float32")
-            if audio.ndim > 1:
-                audio = audio.mean(axis=1)
-        finally:
-            if tmp_path:
-                try:
-                    Path(tmp_path).unlink()
-                except OSError:
-                    pass
+        audio, sample_rate = (analysis_audio if analysis_audio is not None
+                              else load_analysis_audio(source_path, DEFAULT_SAMPLE_RATE))
 
         syl_results = syllabify_words(words, audio, sample_rate)
         intonation_words = (
@@ -437,14 +400,49 @@ class SpeechPipeline:
         self,
         source_path: str | Path,
         min_speaker_duration: float = 0.5,
+        *,
+        detect_sounds: bool = False,
+        sound_classifier=None,
     ) -> dict:
         """Everything automated, one call: ASR + diarization + alignment
         + intonation (loudness/pitch/harmonics typography) + syllables
         and pitch contours. The result feeds build_editor_payload()
         straight into a fully expressive CWI project."""
         result = self.run_with_alignment(source_path, min_speaker_duration)
-        self.attach_intonation(result, source_path)
-        self.attach_pitch_contours(result, source_path)
+        if not result["transcription"].words and not detect_sounds:
+            result["intonation"] = None
+            result["contours"] = None
+            return result
+        from engine.audio_analysis.io import load_analysis_audio
+
+        analysis_audio = load_analysis_audio(source_path)
+        self.attach_intonation(result, source_path, analysis_audio=analysis_audio)
+        self.attach_pitch_contours(result, source_path, analysis_audio=analysis_audio)
+        if detect_sounds:
+            self.attach_sound_regions(result, source_path, classifier=sound_classifier,
+                                      analysis_audio=analysis_audio)
+        return result
+
+    def attach_sound_regions(self, result: dict, source_path: str | Path, *,
+                             classifier=None, analysis_audio: tuple | None = None) -> dict:
+        """Opt-in non-speech suggestions, never verified sound descriptions.
+
+        Speech-covered frames are excluded, so this cannot detect music or
+        effects underneath dialogue. No model is downloaded implicitly.
+        """
+        from dataclasses import asdict
+
+        from engine.audio_analysis.classify import detect_sound_regions
+        from engine.audio_analysis.io import load_analysis_audio
+
+        audio, sample_rate = (analysis_audio if analysis_audio is not None
+                              else load_analysis_audio(source_path))
+        words = result["transcription"].words
+        spans = [(word.start, word.end) for word in words]
+        regions = detect_sound_regions(audio, sample_rate, spans, classifier=classifier)
+        name = type(classifier).__name__ if classifier is not None else "HeuristicClassifier"
+        result["sound_regions"] = [asdict(region) for region in regions]
+        result["sound_classifier"] = name
         return result
 
     # ─── Editor Integration (M6) ───────────────────────────────────
@@ -570,6 +568,32 @@ class SpeechPipeline:
                 words, 0, transcription.text,
                 min(w.start for w in words), max(w.end for w in words),
             )
+
+        for region in result.get("sound_regions", []):
+            if region.get("label") not in ("music", "sfx"):
+                continue
+            start, end = region["start"], region["end"]
+            if end <= start or start < 0:
+                continue
+            music = region["label"] == "music"
+            # Generic descriptors are deliberately honest when the classifier
+            # supplies no specific label. Model scores are not calibrated confidence.
+            detail = region.get("detail") or ("music playing" if music else "sound effect")
+            text = detail if music else f"[{detail.strip('[]')}]"
+            from engine.typography.mapping import volume_to_size
+
+            entries.append({
+                "text": text, "start": start, "end": end,
+                "type": "music" if music else "sound_effect",
+                "speaker_id": None, "confidence": None,
+                "source_model": result.get("sound_classifier", "unknown sound classifier"),
+                "source_timestamp": start,
+                "notes": "Unverified automatic sound suggestion. Listen, correct the label and timing, or delete it. Speech-covered frames are excluded; underlying effects/music may be missed.",
+                "words": [{"text": text, "start": start, "end": end,
+                           "size_pct": 5.0 if music else volume_to_size(region.get("loudness", 0.5)),
+                           "color": "#FFFFFF"}],
+            })
+        entries.sort(key=lambda entry: (entry["start"], entry["end"]))
 
         # Ensure every referenced speaker id exists in the speaker list
         for entry in entries:
