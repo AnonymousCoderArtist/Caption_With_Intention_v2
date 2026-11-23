@@ -27,7 +27,6 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Optional
 
-from engine.asr.longform import extract_audio_chunks
 from engine.asr.models import Segment, TranscriptionResult, Word
 
 logger = logging.getLogger("caption_with_intention")
@@ -315,10 +314,9 @@ class ParakeetTranscriber:
     ) -> list[TranscriptionResult]:
         """Transcribe long audio in chunks for memory-bounded processing.
 
-        Chunks are extracted to 16 kHz mono WAV with ffmpeg. Unlike the
-        faster-whisper backend, word and segment times in each returned
-        TranscriptionResult are offset onto the SOURCE timeline (chunk
-        start added back), so results can be concatenated directly.
+        Chunks are extracted to16kHz mono WAV. Both recognition backends
+        return source-timeline word and segment times. Overlap words are
+        retained for later reconciliation, not safe to concatenate blindly.
 
         Args:
             source_path: Path to audio or video file.
@@ -329,30 +327,9 @@ class ParakeetTranscriber:
         Returns:
             List of TranscriptionResult per chunk (source-timeline times).
         """
-        source = Path(source_path)
-        results: list[TranscriptionResult] = []
-        for start, chunk_path in extract_audio_chunks(
-            source,
-            chunk_duration=chunk_duration,
-            overlap=overlap,
-        ):
-            owns_chunk = Path(chunk_path) != source
-            try:
-                chunk_result = self.transcribe(chunk_path, **kwargs)
-                chunk_result.source_path = str(source)
-                if start > 0:
-                    _offset_result(chunk_result, start)
-                results.append(chunk_result)
-            except Exception as e:  # noqa: BLE001 - one bad chunk
-                # should not kill a long run; log and continue
-                logger.warning("Chunk starting %.2fs failed: %s", start, e)
-            finally:
-                if owns_chunk:
-                    try:
-                        Path(chunk_path).unlink()
-                    except OSError:
-                        pass
-        return results
+        from engine.asr.longform import transcribe_chunks
+
+        return transcribe_chunks(self, source_path, chunk_duration, overlap, **kwargs)
 
     def get_model_info(self) -> dict:
         """Return current configuration as a dict."""
@@ -364,16 +341,3 @@ class ParakeetTranscriber:
             "language": self.language,
             "initialized": self._initialized,
         }
-
-
-def _offset_result(result: TranscriptionResult, offset: float) -> None:
-    """Shift all word/segment times in a result by offset seconds."""
-    for word in result.words:
-        word.start += offset
-        word.end += offset
-    for segment in result.segments:
-        segment.start += offset
-        segment.end += offset
-        for word in segment.words:
-            word.start += offset
-            word.end += offset

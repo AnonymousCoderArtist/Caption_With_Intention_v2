@@ -488,3 +488,7 @@ User approved the reviewed audit on2026-11-23 at16:32IST. First commit: FFT auto
 Shared-waveform analysis and opt-in unverified sound suggestions now flow into editable events. Model confidence remains unknown, speech-covered frames excluded, and source memory remains whole-waveform. Maximum event end sets sequence duration.
 
 Sound review UI: pending model-sourced sound/music events get a separate filter and visible Check sound label. Accept/correct status removes reviewed proposals from the filter. Desktop screenshot, actual category render and accept/save/pending journey inspected.
+
+### Approved long-video publication,2026-11-23
+
+User approved the reviewed RAM/CPU round at17:41IST. First publication covers finite extraction windows, source-time consistency and fail-loud stream helpers. Pre-push verification:710Python passed/9skipped,82frontend,production build/full browser acceptance. Resource runner and achievements documentation follow as separate commits. New autosave work is separate and not included.

@@ -229,72 +229,9 @@ class Transcriber:
         Returns:
             List of TranscriptionResult per chunk.
         """
-        import os
-        import subprocess
-        import tempfile
+        from engine.asr.longform import transcribe_chunks
 
-        from engine.media.probe import probe_video
-
-        source = Path(source_path)
-        info = probe_video(source)
-        duration = info.get("duration", 0.0)
-
-        if duration <= chunk_duration:
-            return [self.transcribe(source_path, **kwargs)]
-
-        results: list[TranscriptionResult] = []
-        start = 0.0
-
-        while start < duration:
-            end = min(start + chunk_duration, duration)
-            logger.info(
-                "Transcribing chunk: %.2fs - %.2fs",
-                start,
-                end,
-            )
-
-            chunk_path: str | None = None
-            try:
-                fd, chunk_path = tempfile.mkstemp(suffix=".wav")
-                os.close(fd)
-                cmd = [
-                    "ffmpeg",
-                    "-y",
-                    "-ss",
-                    str(start),
-                    "-i",
-                    str(source),
-                    "-to",
-                    str(end),
-                    "-ac",
-                    "1",
-                    "-ar",
-                    "16000",
-                    chunk_path,
-                ]
-                # check=False: a failed extraction surfaces as a load
-                # error in transcribe() below, which the chunk loop handles
-                subprocess.run(cmd, capture_output=True, timeout=120, check=False)
-
-                chunk_result = self.transcribe(chunk_path, **kwargs)
-                chunk_result.source_path = str(source)
-                results.append(chunk_result)
-            except Exception as e:  # noqa: BLE001 - any chunk failure is fatal
-                # for the stream; log and stop rather than crash mid-video
-                logger.warning("Chunk %.2fs-%.2fs failed: %s", start, end, e)
-                break
-            finally:
-                if chunk_path:
-                    try:
-                        os.remove(chunk_path)
-                    except OSError:
-                        pass
-
-            # Overlap for continuity; cap at half the chunk so the loop
-            # always advances even with a misconfigured overlap
-            start = end - min(overlap, chunk_duration * 0.5)
-
-        return results
+        return transcribe_chunks(self, source_path, chunk_duration, overlap, **kwargs)
 
     def get_model_info(self) -> dict:
         """Return current configuration as a dict."""

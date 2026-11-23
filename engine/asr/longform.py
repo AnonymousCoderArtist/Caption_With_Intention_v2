@@ -1,25 +1,40 @@
-"""Shared long-form audio helpers for ASR backends.
-
-Chunked transcription keeps memory bounded on long videos (spec §9 and
-M13): ffmpeg extracts overlapping 16 kHz mono WAV windows, the backend
-transcribes each window, and results are returned per chunk.
-"""
+"""Bounded audio-window extraction shared by local recognition backends."""
 
 from __future__ import annotations
 
-import logging
+import math
 import os
 import subprocess
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
+from engine.asr.models import TranscriptionResult
 from engine.media.probe import probe_video
-
-logger = logging.getLogger("caption_with_intention")
 
 DEFAULT_CHUNK_DURATION = 30.0
 DEFAULT_OVERLAP = 2.0
+
+
+def chunk_windows(
+    duration: float,
+    chunk_duration: float = DEFAULT_CHUNK_DURATION,
+    overlap: float = DEFAULT_OVERLAP,
+) -> Iterator[tuple[float, float]]:
+    """Finite windows; the last window is yielded exactly once."""
+    if not all(math.isfinite(v) for v in (duration, chunk_duration, overlap)):
+        raise ValueError("Chunk settings and source duration must be finite")
+    if duration <= 0 or chunk_duration <= 0 or not 0 <= overlap < chunk_duration:
+        raise ValueError(
+            "Positive durations and overlap below chunk duration are required"
+        )
+    start = 0.0
+    while start < duration:
+        end = min(start + chunk_duration, duration)
+        yield start, end
+        if end >= duration:
+            return
+        start = end - overlap
 
 
 def extract_audio_chunks(
@@ -27,63 +42,86 @@ def extract_audio_chunks(
     chunk_duration: float = DEFAULT_CHUNK_DURATION,
     overlap: float = DEFAULT_OVERLAP,
 ) -> Iterator[tuple[float, str]]:
-    """Yield (start_seconds, wav_path) chunks of a source's audio track.
+    """Yield source-offset and owned mono WAV, removing it on advance/close.
 
-    Each chunk is a freshly extracted 16 kHz mono WAV. The caller owns
-    the file and should delete it when done.
-
-    A source shorter than chunk_duration yields the whole file once at
-    offset 0. Sources without a probed duration yield the source path
-    itself at offset 0 (assumed already backend-readable).
+    Probe/extraction failures are fatal rather than returning partial success.
+    Every source, including short video, is converted to a backend-readable WAV.
     """
     source = Path(source_path)
-    try:
-        info = probe_video(source)
-        duration = float(info.get("duration", 0.0))
-    except Exception as e:  # noqa: BLE001 - probing is best-effort
-        logger.debug("Could not probe %s (%s); treating as single chunk", source, e)
-        duration = 0.0
-
-    if duration <= chunk_duration:
-        yield 0.0, str(source)
-        return
-
-    start = 0.0
-    while start < duration:
-        end = min(start + chunk_duration, duration)
-        logger.info("Extracting audio chunk: %.2fs - %.2fs", start, end)
-
-        fd, chunk_path = tempfile.mkstemp(suffix=".wav")
+    info = probe_video(source)
+    duration = float(info.get("duration", 0))
+    for start, end in chunk_windows(duration, chunk_duration, overlap):
+        fd, temporary = tempfile.mkstemp(suffix=".wav")
         os.close(fd)
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-ss",
-            str(start),
-            "-i",
-            str(source),
-            "-to",
-            str(end),
-            "-ac",
-            "1",
-            "-ar",
-            "16000",
-            chunk_path,
-        ]
-        proc = subprocess.run(cmd, capture_output=True, timeout=120, check=False)
-        if proc.returncode == 0:
-            yield start, chunk_path
-        else:
-            logger.warning(
-                "ffmpeg chunk extraction failed at %.2fs: %s",
-                start,
-                proc.stderr.decode(errors="replace")[-200:],
+        try:
+            proc = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    "-y",
+                    "-ss",
+                    str(start),
+                    "-i",
+                    str(source),
+                    "-t",
+                    str(end - start),
+                    "-vn",
+                    "-threads",
+                    "1",
+                    "-ac",
+                    "1",
+                    "-ar",
+                    "16000",
+                    temporary,
+                ],
+                capture_output=True,
+                timeout=120,
+                check=False,
             )
-            try:
-                os.remove(chunk_path)
-            except OSError:
-                pass
+            if proc.returncode:
+                raise RuntimeError(
+                    f"Audio extraction failed for source window {start:.3f}-{end:.3f}"
+                )
+            yield start, temporary
+        finally:
+            Path(temporary).unlink(missing_ok=True)
 
-        # Overlap for continuity; cap at half the chunk so the loop
-        # always advances even with a misconfigured overlap.
-        start = end - min(overlap, chunk_duration * 0.5)
+
+def offset_result(result: TranscriptionResult, offset: float) -> None:
+    """Shift words once even when segment.words shares the same objects."""
+    seen: set[int] = set()
+    for word in result.words + [
+        word for segment in result.segments for word in segment.words
+    ]:
+        if id(word) not in seen:
+            word.start += offset
+            word.end += offset
+            seen.add(id(word))
+    for segment in result.segments:
+        segment.start += offset
+        segment.end += offset
+
+
+def transcribe_chunks(
+    transcriber,
+    source_path: str | Path,
+    chunk_duration: float,
+    overlap: float,
+    **kwargs,
+) -> list[TranscriptionResult]:
+    """Compatibility list interface. Fail loudly; do not silently drop windows.
+
+    Returned overlap words are not deduplicated. This is not a resumable runner.
+    """
+    results = []
+    chunks = extract_audio_chunks(source_path, chunk_duration, overlap)
+    try:
+        for start, path in chunks:
+            result = transcriber.transcribe(path, **kwargs)
+            offset_result(result, start)
+            result.source_path = str(source_path)
+            results.append(result)
+    finally:
+        chunks.close()
+    return results
