@@ -133,7 +133,7 @@ try{
  await storagePage.addInitScript(()=>{Storage.prototype.setItem=function(){throw new DOMException('Test quota failure','QuotaExceededError');};});
  await storagePage.goto(`http://127.0.0.1:${uiPort}`);
  await storagePage.locator('input[aria-label="Open project JSON"]').setInputFiles(projectPath);
- await storagePage.getByRole('alert').filter({hasText:'Browser storage is full or unavailable'}).waitFor();
+ await storagePage.locator('.autosave-icon.save-problem').waitFor();await storagePage.getByRole('button',{name:'Autosave settings',exact:true}).click();await storagePage.getByText('Browser save failed.',{exact:false}).waitFor();
  const rescue=storagePage.waitForEvent('download');await storagePage.getByRole('button',{name:'Save project',exact:true}).first().click();
  await (await rescue).saveAs(path.join(folder,'quota-rescue.cwi.json'));
  assert.equal(JSON.parse(await readFile(path.join(folder,'quota-rescue.cwi.json'),'utf8')).events.length,1);

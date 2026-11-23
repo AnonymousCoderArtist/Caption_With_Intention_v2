@@ -514,3 +514,5 @@ Reviewed editor autosave status,manual/lifecycle flush,previous-snapshot restore
 ### Approved optional disk autosave publication
 
 User approved reviewed silent-icon/disk round at18:19IST. First focused commit adds serialized optional writable-file saving and tests.92frontend/build/full browser acceptance rechecked. Native OS chooser remains manually unverified; guide and full recheck are separate local work.
+
+Reviewed quiet topbar save icon,manual settings/recovery and explicit chosen-file connection published. Browser save stays independent; disk target detaches on project changes/reload. Permission errors remain subtle and never launch prompts automatically.

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorApiClient } from "@/api/client";
 import { DemoClient } from "@/lib/demoProject";
+import {DiskAutosave,supportsDiskAutosave,type DiskState} from "@/lib/diskAutosave";
 import {browserStorage,previousRecovery,readLocalRecovery,savedAt,writeLocalAutosave} from "@/lib/autosave";
 import { emptyProject, parseProject } from "@/lib/projectFile";
 import type { Project, CaptionEvent, Word, Style } from "@/types/project";
@@ -104,6 +105,11 @@ export function App() {
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
   const [saveError, setSaveError] = useState(false);
+  const [diskState,setDiskState]=useState<DiskState>('off');
+  const [diskName,setDiskName]=useState('');
+  const [diskMessage,setDiskMessage]=useState('');
+  const diskSaver=useRef<DiskAutosave|null>(null);
+  if(!diskSaver.current)diskSaver.current=new DiskAutosave((state,name)=>{setDiskState(state);if(name)setDiskName(name);});
   const [autosaveState,setAutosaveState]=useState<'idle'|'saving'|'saved'|'error'>('idle');
   const [lastSaved,setLastSaved]=useState<number|null>(()=>savedAt(browserStorage));
   const [recoveredPrevious,setRecoveredPrevious]=useState(()=>readLocalRecovery(browserStorage).from==='previous');
@@ -117,6 +123,7 @@ export function App() {
     if(!latestSnapshot.current)return;
     try{const at=writeLocalAutosave(browserStorage,latestSnapshot.current);setLastSaved(at);setSaveError(false);setAutosaveState('saved');}
     catch{setSaveError(true);setAutosaveState('error');}
+    void diskSaver.current?.save(JSON.stringify(latestSnapshot.current));
   },[]);
   const [showProjectSettings, setShowProjectSettings] = useState(false);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
@@ -191,7 +198,7 @@ export function App() {
       if(renderActive.current){showToast('Finish or cancel the active render before changing projects.', 'error');return;}
       if (isNew && project && (project.events.length || project.speakers.length) && !window.confirm('Start a new local project? Save the current project JSON first if you want to keep it.')) return;
       if (isNew) {
-        sessionVersion.current++; clientRef.current = new DemoClient(emptyProject()); setSource('demo');
+        diskSaver.current?.detach();sessionVersion.current++; clientRef.current = new DemoClient(emptyProject()); setSource('demo');
         setSelectedEventId(null); setSelectedIds([]); setTime(0); setPlaying(false);
         setMediaUrl(null); setSourceFile(null); setMediaName(''); setMediaDuration(null);
         setWorkspace('Edit');setShowProjectSettings(false);setShowRender(false); clipboardRef.current = null; auditionEnd.current=null;
@@ -225,7 +232,7 @@ export function App() {
   },[project,projectName,flushAutosave]);
   useEffect(()=>{
     const hidden=()=>{if(document.visibilityState==='hidden')flushAutosave();};
-    const before=(event:BeforeUnloadEvent)=>{flushAutosave();if(latestSnapshot.current){try{writeLocalAutosave(browserStorage,latestSnapshot.current);}catch{event.preventDefault();event.returnValue='';}}};
+    const before=()=>{flushAutosave();};
     window.addEventListener('pagehide',flushAutosave);document.addEventListener('visibilitychange',hidden);window.addEventListener('beforeunload',before);
     return()=>{window.removeEventListener('pagehide',flushAutosave);document.removeEventListener('visibilitychange',hidden);window.removeEventListener('beforeunload',before);};
   },[flushAutosave]);
@@ -235,11 +242,22 @@ export function App() {
     if(renderActive.current){showToast('Finish or cancel the render before restoring.','error');return;}
     if(!window.confirm('Restore the previous local snapshot? Download the current project JSON first if you want to keep it.'))return;
     if(autosaveTimer.current)clearTimeout(autosaveTimer.current);
-    sessionVersion.current++;clientRef.current=new DemoClient(previous);setSource('demo');
+    diskSaver.current?.detach();sessionVersion.current++;clientRef.current=new DemoClient(previous);setSource('demo');
     setProject(previous);setProjectName(previous.project_name);setSelectedEventId(null);setSelectedIds([]);setPlaying(false);setTime(0);
     setMediaUrl(null);setSourceFile(null);setMediaName('');setMediaDuration(null);setWorkspace('Edit');setShowRender(false);setShowProjectSettings(false);
     clipboardRef.current=null;auditionEnd.current=null;setRecoveredPrevious(true);setShowRecovery(false);setRecoveryVersion(v=>v+1);
-    showToast('Previous local snapshot restored. Select its matching video again.');
+  };
+
+  const chooseDiskFile=async()=>{
+    setDiskMessage('');
+    if(!supportsDiskAutosave()){setDiskMessage('This browser cannot choose a disk autosave file. Browser autosave and JSON download still work.');return;}
+    const version=sessionVersion.current;
+    try{
+      const file=await (window as any).showSaveFilePicker({suggestedName:`${projectName.replace(/[^a-z0-9_-]/gi,'_')}.cwi.json`,types:[{description:'CWI project JSON',accept:{'application/json':['.json']}}]});
+      if(version!==sessionVersion.current)return;
+      diskSaver.current?.attach(file);setDiskName(file.name);
+      if(latestSnapshot.current)await diskSaver.current?.save(JSON.stringify(latestSnapshot.current));
+    }catch(error){if((error as any)?.name!=='AbortError')setDiskMessage('Disk autosave could not start. Browser autosave is still active.');}
   };
 
   const importProject = async (file: File) => {
@@ -248,7 +266,7 @@ export function App() {
       const data = parseProject(await file.text());
       if(renderActive.current){showToast('Finish or cancel the active render before changing projects.', 'error');return;}
       if (project && (project.events.length || project.speakers.length) && !window.confirm('Replace the current editing session? Save its project JSON first if you want to keep it.')) return;
-      sessionVersion.current++;
+      diskSaver.current?.detach();sessionVersion.current++;
       clientRef.current = new DemoClient(data); setSource('demo'); setProject(data);
       setProjectName(data.project_name); setSelectedEventId(null); setSelectedIds([]); setTime(0); setPlaying(false); setStarted(true);
       setMediaUrl(null); setSourceFile(null); setMediaName(''); setMediaDuration(null);
@@ -475,8 +493,10 @@ export function App() {
   return (
     <div className="app-shell" ref={shellRef} data-mobile-panel={mobilePanel} data-workspace={workspace}>
       <input ref={projectInputRef} type="file" accept=".json" hidden aria-label="Open project JSON" onChange={e => {const f=e.target.files?.[0];if(f)void importProject(f);e.target.value='';}} />
-      {saveError && <div className="save-warning" role="alert">Browser storage is full or unavailable. Save project JSON to keep your changes.</div>}
       <TopBar
+        saveIndicator={<>
+        <button className={`autosave-icon ${saveError||diskState==='error'?'save-problem':''}`} aria-label="Autosave settings" title={`${saveError?'Browser autosave failed':autosaveState==='saving'?'Saving locally':lastSaved?'Saved locally at '+new Date(lastSaved).toLocaleTimeString():'Browser autosave ready'}${diskState==='off'?'':diskState==='error'?' · Disk save needs attention':' · Disk '+diskState}`} onClick={()=>{setShowRecovery(v=>!v);setRecoveryVersion(v=>v+1);}}>{saveError||diskState==='error'?'!':autosaveState==='saving'||diskState==='saving'?'◌':'✓'}</button>
+      </>}
         projectName={projectName}
         onRename={setProjectName}
         onRenameCommit={() => act(() => clientRef.current!.updateProject({project_name:projectName}))}
@@ -490,13 +510,20 @@ export function App() {
         onExit={() => {if(renderActive.current){showToast('Finish or cancel the active render before leaving the editor.', 'error');return;} setPlaying(false); setStarted(false); }}
       />
 
-      <div className="autosave-strip" aria-label="Local autosave">
-        <span role="status">{autosaveState==='saving'?'Saving locally…':autosaveState==='error'?'Autosave failed':autosaveState==='saved'?`Saved locally${lastSaved?' at '+new Date(lastSaved).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}):''}`:'Local autosave ready'}</span>
-        <button onClick={flushAutosave}>Save locally now</button><button onClick={()=>{setShowRecovery(v=>!v);setRecoveryVersion(v=>v+1);}}>Recovery</button>
-        <small>On this browser only. Download JSON for a backup. Source video is not stored.</small>
-      </div>
-      {recoveredPrevious&&<div className="save-warning" role="status">Recovered a previous local snapshot. Check it, then download project JSON.<button onClick={()=>setRecoveredPrevious(false)}>Dismiss</button></div>}
-      {showRecovery&&<section className="recovery-panel" aria-label="Autosave recovery" key={recoveryVersion}><b>Previous local snapshot</b><p>{previousRecovery(browserStorage)?`${previousRecovery(browserStorage)!.project_name} · ${previousRecovery(browserStorage)!.events.length} captions`:'No valid previous snapshot available.'}</p><p>One previous saved snapshot is kept when browser space allows. It is not a version history or a disk backup. Restoring replaces this editing session; video must be selected again.</p><button onClick={restorePrevious} disabled={!previousRecovery(browserStorage)}>Restore previous snapshot</button><button onClick={exportProject}>Download current JSON</button></section>}
+      {showRecovery&&<section className="recovery-panel" aria-label="Autosave settings panel" key={recoveryVersion}>
+        <b>Autosave</b><button className="subtle" onClick={()=>setShowRecovery(false)} aria-label="Close autosave settings">Close</button>
+        <p>{saveError?'Browser save failed. Download JSON to keep your current edits.':autosaveState==='saving'?'Saving in this browser…':`Saved in this browser${lastSaved?' at '+new Date(lastSaved).toLocaleTimeString():''}.`}</p>
+        {recoveredPrevious&&<p>Recovered a previous valid local snapshot. Check it and download JSON.</p>}
+        <button onClick={flushAutosave}>Save now</button><button onClick={exportProject}>Download JSON</button>
+        <p>Optional disk copy: {diskState==='off'?'not connected':`${diskName} · ${diskState==='error'?'save failed, reconnect to retry':diskState}`}</p>
+        <button onClick={()=>void chooseDiskFile()} disabled={!supportsDiskAutosave()}>Choose disk autosave file</button>{diskState!=='off'&&<button onClick={()=>{diskSaver.current?.detach();setDiskName('');}}>Stop disk autosave</button>}
+        {!supportsDiskAutosave()&&<p>Disk file access is unavailable in this browser. Use JSON download instead.</p>}
+        {diskMessage&&<p>{diskMessage}</p>}
+        <p>Disk saving starts only after you choose a file and allow access. It overwrites that chosen JSON file. Reconnect after reload or project change. No prompts appear during editing; revoked permission only changes the icon.</p>
+        <p>Previous browser snapshot: {previousRecovery(browserStorage)?`${previousRecovery(browserStorage)!.project_name} · ${previousRecovery(browserStorage)!.events.length} captions`:'none available'}.</p>
+        <button onClick={restorePrevious} disabled={!previousRecovery(browserStorage)}>Restore previous snapshot</button>
+        <p>Browser storage is not a disk backup. Source video and undo history are not stored. Use one editing tab; unfinished drafts and the newest pending write can be lost on a crash.</p>
+      </section>}
       <nav className="workspace-tabs" aria-label="Editor workspaces">{['Edit','Text','Color','Speakers','Export'].map(tab=><button key={tab} aria-pressed={workspace===tab} onClick={()=>{setWorkspace(tab);if(tab==='Speakers')setActivePanel('speakers');if(tab==='Text'||tab==='Edit')setActivePanel('events');if(tab==='Export')setShowRender(true);else if(!renderActive.current)setShowRender(false);}}>{tab}</button>)}<label><input type="checkbox" checked={lightPreview} onChange={e=>setLightPreview(e.target.checked)}/> Lightweight preview (15 fps)</label></nav>
       {workspace==='Color'&&<section className="grade-panel" aria-label="Video color grading"><b>Video color</b>{(['brightness','contrast','saturation'] as const).map(key=><label key={key}>{key}<DraftNumber aria-label={`Video ${key}`} value={project?.video[key]??(key==='brightness'?0:1)} min={key==='brightness'?-.5:key==='contrast'?.5:0} max={key==='brightness'?.5:2} step={.05} onCommit={value=>act(()=>clientRef.current!.updateProject({video:{[key]:value}}))}/></label>)}<button onClick={()=>act(()=>clientRef.current!.updateProject({video:{brightness:0,contrast:1,saturation:1}}))}>Reset grade</button><small>Source video only. Captions stay unchanged. Browser grade is approximate; final MP4 uses FFmpeg.</small></section>}
       <Toolbar

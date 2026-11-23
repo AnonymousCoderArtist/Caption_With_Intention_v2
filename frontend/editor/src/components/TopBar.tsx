@@ -1,3 +1,4 @@
+import type {ReactNode} from "react";
 import { Icon } from "@/lib/icons";
 
 interface TopBarProps {
@@ -12,6 +13,7 @@ interface TopBarProps {
   onImportMedia: () => void;
   onOpenProject: () => void;
   localLabel: string;
+  saveIndicator?:ReactNode;
 }
 
 export function TopBar({
@@ -25,7 +27,7 @@ export function TopBar({
   onExport,
   onImportMedia,
   onOpenProject,
-  localLabel,
+  localLabel,saveIndicator,
 }: TopBarProps) {
   return (
     <header className="topbar">
@@ -58,6 +60,7 @@ export function TopBar({
         </span>
       )}
 
+      {saveIndicator}
       <div style={{ flex: 1 }} />
 
       {/* stats */}
