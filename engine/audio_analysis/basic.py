@@ -11,6 +11,22 @@ from typing import Optional
 import numpy as np
 
 
+def positive_autocorrelation(samples: np.ndarray) -> np.ndarray:
+    """Linear autocorrelation at non-negative lags, using FFT for long spans.
+
+    Zero padding prevents circular wrap-around. Float64 keeps the same
+    numerical precision as pitch analysis without a new dependency.
+    """
+    x = np.asarray(samples, dtype=np.float64)
+    if not len(x):
+        return np.empty(0, dtype=np.float64)
+    if len(x) < 256:
+        return np.correlate(x, x, mode="full")[len(x) - 1:]
+    fft_size = 1 << (2 * len(x) - 1).bit_length()
+    spectrum = np.fft.rfft(x, n=fft_size)
+    return np.fft.irfft(spectrum * spectrum.conj(), n=fft_size)[:len(x)]
+
+
 def estimate_loudness(
     audio_chunk: np.ndarray,
     sample_rate: int,
@@ -79,8 +95,7 @@ def estimate_pitch(
         return None
 
     x = np.asarray(audio_chunk, dtype=np.float64) - float(np.mean(audio_chunk))
-    corr = np.correlate(x, x, mode="full")
-    corr = corr[len(corr) // 2 :]  # Keep positive lags
+    corr = positive_autocorrelation(x)
 
     if len(corr) == 0 or corr[0] <= 0:
         return None

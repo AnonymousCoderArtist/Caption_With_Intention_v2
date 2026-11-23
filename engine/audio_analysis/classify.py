@@ -23,11 +23,14 @@ the same classify() call once its model file is present.
 from __future__ import annotations
 
 import csv
+import math
 import os
 from dataclasses import dataclass
 from typing import Literal, Optional
 
 import numpy as np
+
+from engine.audio_analysis.basic import positive_autocorrelation
 
 SoundClass = Literal["speech", "music", "sfx", "silence"]
 
@@ -79,7 +82,7 @@ def harmonicity(samples: np.ndarray, sample_rate: int) -> float:
         return 0.0
     x = samples - np.mean(samples)
     denom = float(np.sum(x**2)) + 1e-12
-    ac = np.correlate(x, x, mode="full")[len(x) - 1 :] / denom
+    ac = positive_autocorrelation(x) / denom
     lo, hi = int(sample_rate / 500), int(sample_rate / 60)  # 60-500 Hz
     if hi >= len(ac):
         hi = len(ac) - 1
@@ -273,6 +276,10 @@ class YamnetClassifier:
         return "sfx", top_name
 
 
+    def classify(self, samples: np.ndarray, sample_rate: int) -> SoundClass:
+        return self.classify_detail(samples, sample_rate)[0]
+
+
 def merge_regions(
     regions: list[SoundRegion], max_gap_s: float = 0.6
 ) -> list[SoundRegion]:
@@ -296,9 +303,6 @@ def merge_regions(
             merged.append(SoundRegion(**vars(region)))
     return merged
 
-    def classify(self, samples: np.ndarray, sample_rate: int) -> SoundClass:
-        return self.classify_detail(samples, sample_rate)[0]
-
 
 def detect_sound_regions(
     samples: np.ndarray,
@@ -321,13 +325,25 @@ def detect_sound_regions(
     Returns:
         Classified SoundRegion list, sorted by start time.
     """
+    if not isinstance(sample_rate, (int, np.integer)) or sample_rate <= 0:
+        raise ValueError("Sample rate must be a positive integer")
+    if not math.isfinite(frame_s) or frame_s <= 0:
+        raise ValueError("Frame duration must be finite and positive")
+    if not math.isfinite(min_region_s) or min_region_s < 0:
+        raise ValueError("Minimum region duration must be finite and non-negative")
+    samples = np.asarray(samples)
+    if samples.ndim != 1 or not np.isfinite(samples).all():
+        raise ValueError("Sound detection requires finite mono samples")
     clf = classifier or HeuristicClassifier()
     frame = max(1, int(frame_s * sample_rate))
     speech_mask = np.zeros(len(samples), dtype=bool)
     for start, end in speech_spans:
-        i0 = max(0, int(start * sample_rate))
-        i1 = min(len(samples), int(end * sample_rate))
-        speech_mask[i0:i1] = True
+        if not math.isfinite(start) or not math.isfinite(end) or end <= start:
+            continue
+        i0 = min(len(samples), max(0, int(start * sample_rate)))
+        i1 = min(len(samples), max(0, int(end * sample_rate)))
+        if i1 > i0:
+            speech_mask[i0:i1] = True
 
     # Whole-region classifiers (YAMNet) segment by energy only and
     # classify each region once; per-frame classifiers vote per frame.
@@ -337,7 +353,7 @@ def detect_sound_regions(
     labels: list[str] = []
     for i in range(0, len(samples), frame):
         chunk = samples[i : i + frame]
-        if len(chunk) < frame // 2 or speech_mask[i : i + len(chunk)].mean() > 0.5:
+        if len(chunk) < frame // 2 or speech_mask[i : i + len(chunk)].any():
             labels.append("speech")
         elif whole_region:
             labels.append(
@@ -354,8 +370,8 @@ def detect_sound_regions(
     for idx, label in enumerate(labels + ["speech"]):  # sentinel flushes
         if label != current:
             if current in ("music", "sfx", "sound"):
-                t0 = region_start * frame_s
-                t1 = idx * frame_s
+                t0 = region_start * frame / sample_rate
+                t1 = min(idx * frame, len(samples)) / sample_rate
                 if t1 - t0 >= min_region_s:
                     i0, i1 = int(t0 * sample_rate), int(t1 * sample_rate)
                     final_label = current
@@ -379,4 +395,5 @@ def detect_sound_regions(
                     )
             current = label
             region_start = idx
-    return merge_regions(regions)
+    # Never bridge a speech/silence gap when producing caption suggestions.
+    return merge_regions(regions, max_gap_s=0.0)

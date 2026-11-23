@@ -474,3 +474,7 @@ Lightweight preview uses15fps caption updates instead of30fps. Timeline packing/
 ### Approved polish publication
 
 Reviewed polish publication complete. Actual45s graded MP4 and selected-letter color were visually checked before approval. Known limits remain: approximate browser grade, codepoint-indexed colors, no per-character font/size, no proxy workflow, no real low-end device certification, and no claim of exact preview/final parity.
+
+### Approved desktop audit publication
+
+User approved the reviewed audit on2026-11-23 at16:32IST. First commit: FFT autocorrelation and bounded sound-classifier correctness. Full pre-push checks:684Python passed/9skipped,82frontend passed,build and browser acceptance passed. Further audit feature commits follow. No later long-video work included.
