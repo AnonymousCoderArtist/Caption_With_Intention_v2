@@ -78,7 +78,11 @@ class SpeechPipeline:
         max_workers: int = MAX_CONCURRENT_WORKERS,
         correct_transcript: bool = True,
         min_confidence: float = 0.5,
+        cpu_threads: int | None = None,
     ) -> None:
+        if cpu_threads is not None and cpu_threads < 1:
+            raise ValueError("CPU threads must be positive")
+        self.cpu_threads = cpu_threads
         self.asr_model = asr_model
         self.asr_backend = asr_backend
         self.asr_device = asr_device
@@ -114,6 +118,7 @@ class SpeechPipeline:
                 model=model,
                 device=self.asr_device,
                 compute_type=self.asr_compute_type,
+                **({"cpu_threads": self.cpu_threads} if self.cpu_threads is not None else {}),
             )
         return self._transcriber
 
@@ -123,6 +128,7 @@ class SpeechPipeline:
             self._diarizer = Diarizer(
                 backend=self.diarize_backend,
                 min_confidence=self.diarize_confidence,
+                **({"threads": self.cpu_threads} if self.cpu_threads is not None else {}),
             )
         return self._diarizer
 

@@ -492,3 +492,5 @@ Sound review UI: pending model-sourced sound/music events get a separate filter 
 ### Approved long-video publication,2026-11-23
 
 User approved the reviewed RAM/CPU round at17:41IST. First publication covers finite extraction windows, source-time consistency and fail-loud stream helpers. Pre-push verification:710Python passed/9skipped,82frontend,production build/full browser acceptance. Resource runner and achievements documentation follow as separate commits. New autosave work is separate and not included.
+
+Sequential long-video/batch runner now preserves verified chunk progress, protects resume with source/config hashes, reuses models, limits compute threads and streams final payload assembly. Resource evidence:2h diagnostic source/125windows/3.84MB max waveform; separate45s model run~923MiB sampled process-tree RSS. Not a hard memory cap or recognition-accuracy certification.

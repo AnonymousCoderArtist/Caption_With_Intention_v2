@@ -128,3 +128,15 @@ def test_both_backends_use_shared_source_timeline_contract(backend):
             "sentinel"
         ]
     shared.assert_called_once_with(engine, "source.mp4", 60, 1)
+
+
+def test_pipeline_cpu_budget_reaches_asr_and_diarizer():
+    from engine.speech.pipeline import SpeechPipeline
+
+    pipeline = SpeechPipeline(cpu_threads=2, max_workers=1)
+    with patch(
+        "engine.asr.backends.create_asr_engine", return_value="engine"
+    ) as factory:
+        assert pipeline.transcriber == "engine"
+        assert factory.call_args.kwargs["cpu_threads"] == 2
+    assert pipeline.diarizer._backend_config["threads"] == 2

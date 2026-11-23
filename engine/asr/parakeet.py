@@ -204,6 +204,16 @@ class ParakeetTranscriber:
             )
 
         options: dict = dict(self._kwargs)
+        cpu_threads = options.pop("cpu_threads", None)
+        if cpu_threads is not None:
+            import onnxruntime as ort
+
+            session = ort.SessionOptions()
+            session.intra_op_num_threads = int(cpu_threads)
+            session.inter_op_num_threads = 1
+            session.add_session_config_entry("session.intra_op.allow_spinning", "0")
+            session.add_session_config_entry("session.inter_op.allow_spinning", "0")
+            options["sess_options"] = session
         if self.quantization:
             options["quantization"] = self.quantization
         if self.device == "cuda":
