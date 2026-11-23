@@ -9,6 +9,12 @@ Latest published HEAD is8ee2a11 (approved editor polish). The approved analysis 
 
 Local refinement: FFT autocorrelation with reference-equivalence tests, one shared decode for acoustic stages, fixed classifier/boundary defects, opt-in unverified sound suggestions and separate sound review. User approved this bounded round at16:32IST; it was published as focused commits and separate pushes. Full-waveform memory use and recognition/identity quality remain open, not solved by the kernel speedup.
 
+## Approved long-video RAM/CPU round, 2026-11-23 16:45
+
+Published audit baseline:dd48bc9. Reviewed resource work in `docs/LONG_VIDEO_RESOURCE_ROUND.md`: finite duration-bounded stream extraction, unified source timestamps, fail-loud stream errors, sequential resumable analysis with atomic chunk outputs/source+config identity/digests/lock/disk check, explicit CPU thread budgets and source-time streamed payload assembly. CLI handles multiple sources sequentially and reuses models. User approved publication at17:41IST.
+
+Verification:710Python passed/9skipped,82frontend,build and focused lint pass. Real2-hour synthetic audio was extracted in125windows with cancel/resume; diagnostic peak self RSS~41MiB and max float waveform3.84MB (not model memory). Separate45s small.en+Nemotron run sampled~923MiB process-tree RSS and14s elapsed with2compute threads.23events/7model IDs/21review flags, not certified identities or WER. Full2h model inference, hard RAM/CPU caps, text-based seam reconciliation and weak-PC testing remain open. Actual editor and output frame inspected. No UI code changed in this round.
+
 ## Branch Status
 
 ### Approved stability revision (2026-11-22)
