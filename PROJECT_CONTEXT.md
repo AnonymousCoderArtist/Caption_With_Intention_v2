@@ -470,3 +470,7 @@ Per-visible-character spoken color overrides added to dialogue, overlap and cust
 ### Approved polish publication
 
 Lightweight preview uses15fps caption updates instead of30fps. Timeline packing/tracks are memoized and offscreen cards use rendering containment. Expanded acceptance covers workspaces, character color persistence and grading.4xCPU-throttled smoke passed; no proxy transcode or real-device certification.
+
+### Approved polish publication
+
+Reviewed polish publication complete. Actual45s graded MP4 and selected-letter color were visually checked before approval. Known limits remain: approximate browser grade, codepoint-indexed colors, no per-character font/size, no proxy workflow, no real low-end device certification, and no claim of exact preview/final parity.
