@@ -6,6 +6,12 @@
 
 ---
 
+## Implementation status
+
+This is Lokesh's independent automation/editor implementation of the original creators' Caption With Intention design. The current editor targets desktop computers, including weak computers. It is a local prototype, not a completed production MVP or a certified reproduction of every official frame.
+
+See [the current accuracy and milestone audit](docs/ACCURACY_AUDIT_2026-11-23.md) for verified behavior, open release gates and limits. [Editor handoff](docs/EDITOR_HANDOFF_2026-11-23.md) covers local launch and export. The desktop accuracy audit round was approved for publication on23November2026. See the audit for its limits.
+
 ## Design System Preview
 
 <p align="center">

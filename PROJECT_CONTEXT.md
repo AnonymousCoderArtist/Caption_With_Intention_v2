@@ -3,6 +3,12 @@
 ## Overview
 CWI transforms closed captions into an expressive, accessible experience (color attribution, word-onset sync, intonation mapping). Python engine + React/TS frontend.
 
+## Current status, 2026-11-23 desktop accuracy audit
+
+Latest published HEAD is8ee2a11 (approved editor polish). The approved analysis round is described in `docs/ACCURACY_AUDIT_2026-11-23.md`, including a milestone-by-milestone truth table. Desktop-only is the product target. Earlier milestone labels below are historical development notes, not a release certification. In particular M8 in the specification means visual speaker fallback; the old audio-classification M8 label is incorrect, that work belongs to M11. Manual syllable JSON and intonation inspector surfaces now exist, superseding older remaining-UI notes.
+
+Local refinement: FFT autocorrelation with reference-equivalence tests, one shared decode for acoustic stages, fixed classifier/boundary defects, opt-in unverified sound suggestions and separate sound review. User approved this bounded round at16:32IST; it was published as focused commits and separate pushes. Full-waveform memory use and recognition/identity quality remain open, not solved by the kernel speedup.
+
 ## Branch Status
 
 ### Approved stability revision (2026-11-22)
