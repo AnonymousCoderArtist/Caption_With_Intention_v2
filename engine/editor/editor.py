@@ -109,6 +109,28 @@ class Editor:
         """Apply or reverse an edit action."""
         action_type = action.action_type
 
+        if action_type == "update_project":
+            self.project = Project.model_validate(action.before if undo else action.after)
+            self.project.modified_at = self._now_iso()
+            return
+        # Event snapshots preserve nested models and exact word timing.
+        state = action.before if undo else action.after
+        if action_type in {"update_event", "add_word", "remove_word", "update_word"}:
+            event_id = action.target_id.split("_w_")[0]
+            event = self._get_event(event_id)
+            if event is not None and "words" in state:
+                restored = CaptionEvent.model_validate(state)
+                for key in type(restored).model_fields:
+                    setattr(event, key, getattr(restored, key))
+                self.project.modified_at = self._now_iso()
+                return
+        if action_type in {"set_typography", "set_animation", "set_box_properties", "set_style", "paste_style"}:
+            event = self._get_event(action.target_id)
+            if event is not None:
+                event.style = Style.model_validate(state)
+                self.project.modified_at = self._now_iso()
+            return
+
         # Handle list-modifying actions
         if action_type in ("add_event", "add_speaker", "add_word"):
             if undo:
@@ -232,6 +254,14 @@ class Editor:
                     return word
         return None
 
+    @staticmethod
+    def _next_id(prefix: str, items: list) -> str:
+        used = {item.id for item in items}
+        n = 1
+        while f"{prefix}_{n:03d}" in used:
+            n += 1
+        return f"{prefix}_{n:03d}"
+
     # ─── Speaker Operations ──────────────────────────────────
 
     def add_speaker(
@@ -244,7 +274,7 @@ class Editor:
     ) -> Speaker:
         """Add a new speaker to the project."""
         speaker = Speaker(
-            id=f"spk_{len(self.project.speakers) + 1:03d}",
+            id=self._next_id("spk", self.project.speakers),
             name=name,
             category=category,
             color=color,
@@ -252,6 +282,7 @@ class Editor:
             off_camera=off_camera,
         )
         self.project.speakers.append(speaker)
+        self._record_action("add_speaker", speaker.id, {}, speaker.model_dump())
         self._save()
         logger.info("Added speaker: %s (%s)", name, category)
         return speaker
@@ -262,9 +293,13 @@ class Editor:
         if speaker is None:
             return False
         before = speaker.model_dump()
-        for key, value in kwargs.items():
-            if hasattr(speaker, key):
-                setattr(speaker, key, value)
+        data = {**before, **{key: value for key, value in kwargs.items() if key in Speaker.model_fields and key != "id"}}
+        candidate = Speaker.model_validate(data)
+        import re
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", candidate.color):
+            raise ValueError("Speaker color must be a six-digit hex color")
+        for key in type(candidate).model_fields:
+            setattr(speaker, key, getattr(candidate, key))
         after = speaker.model_dump()
         self._record_action("update_speaker", speaker_id, before, after)
         self._save()
@@ -275,12 +310,13 @@ class Editor:
         speaker = self._get_speaker(speaker_id)
         if speaker is None:
             return False
-        before = speaker.model_dump()
+        before = self.project.model_dump()
         for event in self.project.events:
             if event.speaker_id == speaker_id:
                 event.speaker_id = None
+                event.speaker_reviewed = False
         self.project.speakers = [s for s in self.project.speakers if s.id != speaker_id]
-        self._record_action("remove_speaker", speaker_id, before, {})
+        self._record_action("update_project", "project", before, self.project.model_dump())
         self._save()
         return True
 
@@ -301,7 +337,7 @@ class Editor:
         except ValueError:
             etype = EventType.dialogue
         event = CaptionEvent(
-            id=f"evt_{len(self.project.events) + 1:03d}",
+            id=self._next_id("evt", self.project.events),
             type=etype,
             start=start,
             end=end,
@@ -310,6 +346,7 @@ class Editor:
         )
         if words:
             event.words = [Word(**w) if isinstance(w, dict) else w for w in words]
+        self._validate_event_timing(event)
         self.project.events.append(event)
         self._record_action(
             "add_event",
@@ -327,11 +364,72 @@ class Editor:
         if event is None:
             return False
         before = event.model_dump()
-        for key, value in kwargs.items():
-            if hasattr(event, key):
-                setattr(event, key, value)
-        after = event.model_dump()
-        self._record_action("update_event", event_id, before, after)
+        updates = {k: v for k, v in kwargs.items() if k in CaptionEvent.model_fields and k != "id"}
+        data = {**copy.deepcopy(before), **updates}
+        if "text" in updates and "words" not in updates:
+            tokens = data["text"].split()
+            old_words = before["words"]
+            if len(tokens) == len(old_words):
+                data["words"] = [{**w, "text": token} for w, token in zip(old_words, tokens)]
+            else:
+                # Text-count changes explicitly redistribute timing across the event.
+                span = data["end"] - data["start"]
+                data["words"] = [Word(text=token, start=data["start"] + i * span / len(tokens),
+                                      end=data["start"] + (i + 1) * span / len(tokens)).model_dump()
+                                 for i, token in enumerate(tokens)]
+        if ("start" in updates or "end" in updates) and "words" not in updates and "text" not in updates:
+            old_span = before["end"] - before["start"]
+            new_span = data["end"] - data["start"]
+            def retime(t: float) -> float:
+                return data["start"] + (t - before["start"]) * new_span / max(old_span, 0.001)
+            for word in data["words"]:
+                word["start"], word["end"] = retime(word["start"]), retime(word["end"])
+                if word.get("syllables"):
+                    word["syllables"] = [{**sy, "start": retime(sy["start"]), "end": retime(sy["end"])} for sy in word["syllables"]]
+        candidate = CaptionEvent.model_validate(data)
+        self._validate_event_timing(candidate)
+        for key in type(candidate).model_fields:
+            setattr(event, key, getattr(candidate, key))
+        self._record_action("update_event", event_id, before, event.model_dump())
+        self._save()
+        return True
+
+    def assign_speaker_events(self, event_ids: list[str], speaker_id: Optional[str], reviewed: bool = True) -> bool:
+        if speaker_id is not None and not self._get_speaker(speaker_id):
+            raise ValueError("Speaker does not exist")
+        before = self.project.model_dump()
+        candidate = self.project.model_copy(deep=True)
+        targets = [event for event in candidate.events if event.id in set(event_ids)]
+        if not targets or len(targets) != len(set(event_ids)):
+            raise ValueError("Select existing events")
+        for event in targets:
+            event.speaker_id = speaker_id
+            event.speaker_reviewed = reviewed
+            event.manual_override = True
+        self.project = candidate
+        self._record_action("update_project", "project", before, candidate.model_dump())
+        self._save()
+        return True
+
+    def structure_events(self, event_ids: list[str], operation: str, at: float = 0) -> bool:
+        from engine.editor.structure import edit_structure
+        before = self.project.model_dump()
+        candidate = Project.model_validate(edit_structure(before, event_ids, operation, at))
+        for event in candidate.events:
+            self._validate_event_timing(event)
+        self.project = candidate
+        self._record_action("update_project", "project", before, candidate.model_dump())
+        self._save()
+        return True
+
+    def batch_events(self, event_ids: list[str], operation: str, delta: float = 0, ripple: bool = False) -> bool:
+        from engine.editor.batch import edit_batch
+        before = self.project.model_dump()
+        candidate = Project.model_validate(edit_batch(before, event_ids, operation, delta, ripple))
+        for event in candidate.events:
+            self._validate_event_timing(event)
+        self.project = candidate
+        self._record_action("update_project", "project", before, candidate.model_dump())
         self._save()
         return True
 
@@ -348,54 +446,80 @@ class Editor:
 
     # ─── Word Operations ─────────────────────────────────────
 
+    @staticmethod
+    def _validate_event_timing(event: CaptionEvent) -> None:
+        import math
+
+        if not all(math.isfinite(v) for v in (event.start, event.end)) or event.start < 0 or event.end <= event.start:
+            raise ValueError("Event end must be after its start, with finite non-negative times")
+        for word in event.words:
+            if not all(math.isfinite(v) for v in (word.start, word.end)) or not (event.start <= word.start < word.end <= event.end + 1e-6):
+                raise ValueError("Words must have positive duration inside the event")
+            if (not math.isfinite(word.size_pct) or word.size_pct <= 0
+                    or not 100 <= word.weight <= 1000 or not 25 <= word.width <= 200
+                    or not math.isfinite(word.opacity) or not 0 <= word.opacity <= 1
+                    or (word.pitch_hz is not None and (not math.isfinite(word.pitch_hz) or word.pitch_hz < 0))):
+                raise ValueError("Word size, weight, width, opacity or pitch is invalid")
+            if word.syllables:
+                for syllable in word.syllables:
+                    if (not isinstance(syllable, dict) or not isinstance(syllable.get("text"), str)
+                            or not all(isinstance(syllable.get(k), (float, int)) and math.isfinite(syllable[k]) for k in ("start", "end"))
+                            or syllable["start"] < word.start - 1e-6
+                            or syllable["end"] > word.end + 1e-6
+                            or syllable["end"] <= syllable["start"]):
+                        raise ValueError("Syllables need text and finite ordered times inside their word")
+                    pitch = syllable.get("pitch_hz")
+                    if pitch is not None and (not isinstance(pitch, (int, float)) or not math.isfinite(pitch) or pitch < 0):
+                        raise ValueError("Syllable pitch must be a non-negative finite number")
+            if word.letter_pitches and any(p is not None and (not math.isfinite(p) or p < 0) for p in word.letter_pitches):
+                raise ValueError("Letter pitches must be non-negative finite values or null")
+
     def add_word(self, event_id: str, text: str, start: float, end: float) -> bool:
-        """Add a word to an event."""
+        """Add a word, preserving a complete undo snapshot."""
         event = self._get_event(event_id)
         if event is None:
             return False
-        word = Word(text=text, start=start, end=end)
-        before = event.model_dump()
-        event.words.append(word)
-        after = event.model_dump()
-        self._record_action("add_word", f"{event_id}_w_{text}", before, after)
-        self._save()
-        return True
+        words = [w.model_dump() for w in event.words]
+        words.append(Word(text=text, start=start, end=end).model_dump())
+        return self.update_event(event_id, words=words, text=" ".join(w["text"] for w in words))
 
-    def update_word(
-        self,
-        event_id: str,
-        word_index: int,
-        **kwargs: Any,
-    ) -> bool:
-        """Update word properties (text, timing, size, weight, width, color)."""
+    def update_word(self, event_id: str, word_index: int, **kwargs: Any) -> bool:
+        """Update a word and keep event text in sync, in one undo step."""
         event = self._get_event(event_id)
-        if event is None or word_index >= len(event.words):
+        if event is None or not 0 <= word_index < len(event.words):
             return False
-        word = event.words[word_index]
-        before = word.model_dump()
-        for key, value in kwargs.items():
-            if hasattr(word, key):
-                setattr(word, key, value)
-        after = word.model_dump()
-        self._record_action(
-            "update_word", f"{event_id}_w_{word_index}", before, after
-        )
-        self._save()
-        return True
+        words = [w.model_dump() for w in event.words]
+        old_word = copy.deepcopy(words[word_index])
+        words[word_index].update({k: v for k, v in kwargs.items() if k in Word.model_fields})
+        if ("start" in kwargs or "end" in kwargs) and "syllables" not in kwargs and old_word.get("syllables"):
+            current = words[word_index]
+            def retime(t):
+                return current["start"] + (t - old_word["start"]) * (current["end"] - current["start"]) / max(.001, old_word["end"] - old_word["start"])
+            current["syllables"] = [{**sy, "start": retime(sy["start"]), "end": retime(sy["end"])} for sy in old_word["syllables"]]
+        text = event.text
+        if "text" in kwargs:
+            cursor = 0
+            positions = []
+            for word in event.words:
+                start = event.text.find(word.text, cursor)
+                if start < 0:
+                    break
+                positions.append(start)
+                cursor = start + len(word.text)
+            if len(positions) == len(event.words):
+                start = positions[word_index]
+                text = event.text[:start] + kwargs["text"] + event.text[start + len(old_word["text"]):]
+            else:
+                text = " ".join(w["text"] for w in words)
+        return self.update_event(event_id, words=words, text=text)
 
     def remove_word(self, event_id: str, word_index: int) -> bool:
-        """Remove a word from an event."""
+        """Remove exactly one word, with repeat-word-safe undo/redo."""
         event = self._get_event(event_id)
-        if event is None or word_index >= len(event.words):
+        if event is None or not 0 <= word_index < len(event.words):
             return False
-        before = event.model_dump()
-        event.words.pop(word_index)
-        after = event.model_dump()
-        self._record_action(
-            "remove_word", f"{event_id}_w_{word_index}", before, after
-        )
-        self._save()
-        return True
+        words = [w.model_dump() for i, w in enumerate(event.words) if i != word_index]
+        return self.update_event(event_id, words=words, text=" ".join(w["text"] for w in words))
 
     # ─── Syllable Operations ─────────────────────────────────
 
@@ -409,43 +533,24 @@ class Editor:
     ) -> bool:
         """Add a syllable to a word."""
         event = self._get_event(event_id)
-        if event is None or word_index >= len(event.words):
+        if event is None or not 0 <= word_index < len(event.words):
             return False
-        word = event.words[word_index]
-        if word.syllables is None:
-            word.syllables = []
-        syllable = {"text": text, "start": start, "end": end}
-        word.syllables.append(syllable)
-        self._save()
-        return True
+        syllables = copy.deepcopy(event.words[word_index].syllables or [])
+        syllables.append({"text": text, "start": start, "end": end})
+        return self.update_word(event_id, word_index, syllables=syllables)
 
     def update_syllable(
-        self,
-        event_id: str,
-        word_index: int,
-        syllable_index: int,
-        **kwargs: Any,
+        self, event_id: str, word_index: int, syllable_index: int, **kwargs: Any,
     ) -> bool:
-        """Update syllable properties."""
+        """Update a syllable through the validated, undoable word path."""
         event = self._get_event(event_id)
-        if event is None or word_index >= len(event.words):
+        if event is None or not 0 <= word_index < len(event.words):
             return False
-        word = event.words[word_index]
-        if not word.syllables or syllable_index >= len(word.syllables):
+        syllables = copy.deepcopy(event.words[word_index].syllables or [])
+        if not 0 <= syllable_index < len(syllables):
             return False
-        before = dict(word.syllables[syllable_index])
-        for key, value in kwargs.items():
-            if key in word.syllables[syllable_index]:
-                word.syllables[syllable_index][key] = value
-        after = dict(word.syllables[syllable_index])
-        self._record_action(
-            "update_syllable",
-            f"{event_id}_w{word_index}_s{syllable_index}",
-            {"syllable": before},
-            {"syllable": after},
-        )
-        self._save()
-        return True
+        syllables[syllable_index].update({k: v for k, v in kwargs.items() if k in {"text", "start", "end", "pitch_hz"}})
+        return self.update_word(event_id, word_index, syllables=syllables)
 
     # ─── Timing Editor ───────────────────────────────────────
 
@@ -459,15 +564,9 @@ class Editor:
         event = self._get_event(event_id)
         if event is None:
             return False
-        before = event.model_dump()
-        event.start = max(0.0, event.start + start_delta)
-        event.end = max(event.start, event.end + end_delta)
-        after = event.model_dump()
-        self._record_action(
-            "adjust_event_timing", event_id, before, after
-        )
-        self._save()
-        return True
+        start = max(0.0, event.start + start_delta)
+        end = max(start + 0.001, event.end + end_delta)
+        return self.update_event(event_id, start=start, end=end)
 
     def adjust_word_timing(
         self,
@@ -481,15 +580,9 @@ class Editor:
         if event is None or word_index >= len(event.words):
             return False
         word = event.words[word_index]
-        before = word.model_dump()
-        word.start = max(0.0, word.start + start_delta)
-        word.end = max(word.start, word.end + end_delta)
-        after = word.model_dump()
-        self._record_action(
-            "adjust_word_timing", f"{event_id}_w{word_index}", before, after
-        )
-        self._save()
-        return True
+        start = max(event.start, word.start + start_delta)
+        end = min(event.end, max(start + 0.001, word.end + end_delta))
+        return self.update_word(event_id, word_index, start=start, end=end)
 
     # ─── Typography Inspector ────────────────────────────────
 
@@ -509,17 +602,40 @@ class Editor:
         event = self._get_event(event_id)
         if event is None:
             return False
+        return self._set_style(event, "set_typography", kwargs, {
+            "size_pct", "weight", "width", "italic", "read_ahead_opacity", "minimum_pct", "maximum_pct",
+            "escalation_rate", "escalation_max", "escalation_gate", "size_mode", "weight_mode", "width_mode",
+        })
+
+    def set_style(self, event_id: str, **kwargs: Any) -> bool:
+        """Apply a complete or partial style atomically in one undo step."""
+        event = self._get_event(event_id)
+        if event is None:
+            return False
+        return self._set_style(event, "set_style", kwargs, set(Style.model_fields))
+
+    def _set_style(self, event: CaptionEvent, action: str, updates: dict, allowed: set) -> bool:
+        import math
+
         before = event.style.model_dump()
-        style = event.style
-        for key in ["size_pct", "weight", "width", "italic"]:
-            if hasattr(style, key):
-                if key in kwargs:
-                    setattr(style, key, kwargs[key])
-        for key in ["size_mode", "weight_mode", "width_mode"]:
-            if key in kwargs:
-                setattr(style, key, kwargs[key])
-        after = event.style.model_dump()
-        self._record_action("set_typography", event_id, before, after)
+        data = {**before, **{k: v for k, v in updates.items() if k in allowed}}
+        candidate = Style.model_validate(data)
+        for key in ("read_ahead_opacity", "box_opacity"):
+            if not 0 <= getattr(candidate, key) <= 1:
+                raise ValueError(f"{key} must be between 0 and 1")
+        for key in ("size_pct", "minimum_pct", "maximum_pct", "weight", "width", "pop_scale", "box_padding", "escalation_rate", "escalation_max", "escalation_gate"):
+            value = getattr(candidate, key)
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(f"{key} must be finite and non-negative")
+        if candidate.minimum_pct > candidate.maximum_pct:
+            raise ValueError("Minimum size cannot exceed maximum size")
+        if candidate.size_pct <= 0 or not 100 <= candidate.weight <= 1000 or not 25 <= candidate.width <= 200:
+            raise ValueError("Size, weight or width is outside the supported range")
+        for key in ("size_mode", "weight_mode", "width_mode"):
+            if getattr(candidate, key) not in {"auto", "manual"}:
+                raise ValueError(f"{key} must be auto or manual")
+        event.style = candidate
+        self._record_action(action, event.id, before, candidate.model_dump())
         self._save()
         return True
 
@@ -540,22 +656,9 @@ class Editor:
         event = self._get_event(event_id)
         if event is None:
             return False
-        before = event.style.model_dump()
-        style = event.style
-        for key in [
-            "pop_scale",
-            "pop_duration",
-            "pop_easing",
-            "syllable_mode",
-            "color_transition_point",
-            "color_transition_duration",
-        ]:
-            if key in kwargs:
-                setattr(style, key, kwargs[key])
-        after = event.style.model_dump()
-        self._record_action("set_animation", event_id, before, after)
-        self._save()
-        return True
+        return self._set_style(event, "set_animation", kwargs, {
+            "pop_scale", "pop_duration", "pop_easing", "syllable_mode", "color_transition_point", "color_transition_duration",
+        })
 
     # ─── Box / Work-Area Inspector ───────────────────────────
 
@@ -571,14 +674,9 @@ class Editor:
         event = self._get_event(event_id)
         if event is None:
             return False
-        before = event.style.model_dump()
-        for key in ["box_opacity", "box_padding", "breakout_permission"]:
-            if key in kwargs:
-                setattr(event.style, key, kwargs[key])
-        after = event.style.model_dump()
-        self._record_action("set_box_properties", event_id, before, after)
-        self._save()
-        return True
+        return self._set_style(event, "set_box_properties", kwargs, {
+            "box_opacity", "box_padding", "breakout_permission",
+        })
 
     # ─── Speaker Editor ──────────────────────────────────────
 
@@ -675,14 +773,7 @@ class Editor:
         target = self._get_event(target_event_id)
         if source is None or target is None:
             return False
-        before = target.style.model_dump()
-        target.style = copy.deepcopy(source.style)
-        after = target.style.model_dump()
-        self._record_action(
-            "paste_style", target_event_id, before, after
-        )
-        self._save()
-        return True
+        return self.set_style(target_event_id, **source.style.model_dump())
 
     # ─── Build from Transcript ───────────────────────────────
 
@@ -797,7 +888,7 @@ class Editor:
                 "source_model",
                 "source_timestamp",
                 "manual_override",
-                "off_camera",
+                "off_camera", "speaker_review_required", "speaker_review_reasons", "speaker_coverage", "speaker_reviewed",
             ):
                 if key in entry:
                     setattr(event, key, entry[key])

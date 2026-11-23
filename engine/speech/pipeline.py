@@ -515,6 +515,7 @@ class SpeechPipeline:
             return d
 
         entries: list[dict] = []
+        from engine.diarization.review import attribution_review
 
         def append_turns(turn_words, first_idx, text, start, end):
             # ASR sentence boundaries need not be speaker boundaries.
@@ -548,6 +549,7 @@ class SpeechPipeline:
                         "source_model": model,
                         "source_timestamp": round(run_start, 4),
                         "speaker_id": run[0].speaker_id,
+                        **attribution_review(run, result.get("diarization_segments", []), run[0].speaker_id),
                     }
                 )
 

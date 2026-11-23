@@ -104,6 +104,10 @@ class CaptionEvent(BaseModel):
     source_timestamp: Optional[float] = None
     manual_override: bool = False
     review_state: ReviewState = ReviewState.pending
+    speaker_review_required: bool = False
+    speaker_review_reasons: list[str] = []
+    speaker_coverage: Optional[float] = None
+    speaker_reviewed: bool = False
     exception_profile: Optional[str] = None
     notes: str = ""
 

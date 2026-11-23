@@ -52,6 +52,25 @@ class EditorAPI:
         except Exception as exc:
             return {"error": str(exc)}
 
+    def update_project(self, project_name: Optional[str] = None, video: Optional[dict] = None) -> dict[str, Any]:
+        """Update project metadata without replacing captions or speakers."""
+        try:
+            data = self.editor.project.model_dump()
+            if project_name is not None:
+                data["project_name"] = project_name
+            if video is not None:
+                data["video"] = {**data["video"], **video}
+            candidate = Project.model_validate(data)
+            import math
+            if not all(math.isfinite(v) and v > 0 for v in (candidate.video.width, candidate.video.height, candidate.video.fps)) or not math.isfinite(candidate.video.duration) or candidate.video.duration < 0:
+                raise ValueError("Video dimensions, frame rate and duration must be valid")
+            self.editor._record_action("update_project", "project", self.editor.project.model_dump(), candidate.model_dump())
+            self.editor.project = candidate
+            self.editor._save()
+            return self.get_project()
+        except Exception as exc:
+            return {"error": str(exc)}
+
     def get_project_summary(self) -> dict[str, Any]:
         """Return a lightweight summary of the project state."""
         try:
@@ -186,6 +205,27 @@ class EditorAPI:
         except Exception as exc:
             return {"error": str(exc)}
 
+    def assign_speaker_events(self, event_ids: list[str], speaker_id: Optional[str], reviewed: bool = True) -> dict[str, Any]:
+        try:
+            self.editor.assign_speaker_events(event_ids, speaker_id, reviewed)
+            return self.get_project()
+        except (ValueError, TypeError) as exc:
+            return {"error": str(exc)}
+
+    def structure_events(self, event_ids: list[str], operation: str, at: float = 0) -> dict[str, Any]:
+        try:
+            self.editor.structure_events(event_ids, operation, at)
+            return self.get_project()
+        except (ValueError, TypeError) as exc:
+            return {"error": str(exc)}
+
+    def batch_events(self, event_ids: list[str], operation: str, delta: float = 0, ripple: bool = False) -> dict[str, Any]:
+        try:
+            self.editor.batch_events(event_ids, operation, delta, ripple)
+            return self.get_project()
+        except (ValueError, TypeError) as exc:
+            return {"error": str(exc)}
+
     def remove_event(self, event_id: str) -> dict[str, Any]:
         """Remove an event."""
         try:
@@ -303,6 +343,16 @@ class EditorAPI:
             return {"error": str(exc)}
 
     # ─── Typography Inspector ────────────────────────────────────────
+
+    def set_style(self, event_id: str, **kwargs: Any) -> dict[str, Any]:
+        """Atomically apply style fields, including cross-panel style paste."""
+        try:
+            if not self.editor.set_style(event_id, **kwargs):
+                return {"error": f"Event {event_id} not found"}
+            event = self.editor._get_event(event_id)
+            return {"success": True, "data": event.model_dump(mode="json") if event else {}}
+        except Exception as exc:
+            return {"error": str(exc)}
 
     def set_typography(self, event_id: str, **kwargs: Any) -> dict[str, Any]:
         """Set typography properties on an event's style."""
