@@ -1822,6 +1822,9 @@ class CwiRenderer:
             )
         else:
             vf_filter = f"subtitles='{self._ass_escape_filter_path(ass_path)}'{fontsdir_opt}"
+        grade = self.project.video
+        if grade.brightness != 0 or grade.contrast != 1 or grade.saturation != 1:
+            vf_filter = f"eq=brightness={grade.brightness}:contrast={grade.contrast}:saturation={grade.saturation}," + vf_filter
         if output_path.suffix.lower() == ".mp4":
             # H264/yuv420p requires even dimensions. Preserve every source
             # pixel and caption coordinate by padding only right/bottom.
@@ -1839,6 +1842,9 @@ class CwiRenderer:
             cmd.extend(["-c:a", self.audio_codec])
         else:
             cmd.append("-an")
+        grade = self.project.video
+        if grade.brightness != 0 or grade.contrast != 1 or grade.saturation != 1:
+            vf_filter = f"eq=brightness={grade.brightness}:contrast={grade.contrast}:saturation={grade.saturation}," + vf_filter
         if output_path.suffix.lower() == ".mp4":
             cmd.extend(["-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart"])
 

@@ -79,3 +79,13 @@ def test_wrapped_caption_keeps_punctuation_outside_word_tokens():
     assert lines[0][0].text.endswith(",")
     assert lines[1][0].text.endswith("!")
     assert sum(child.text.count(",") for child, _ in lines) == 11
+
+
+def test_video_grade_precedes_subtitles_so_caption_colors_stay_unchanged(tmp_path):
+    project = Project()
+    project.video.brightness = .1
+    project.video.contrast = 1.2
+    project.video.saturation = .8
+    command = CwiRenderer(project)._build_ffmpeg_command(tmp_path / "s.mp4", tmp_path / "c.ass", tmp_path / "o.mp4")
+    filters = command[command.index("-vf") + 1]
+    assert filters.startswith("eq=brightness=0.1:contrast=1.2:saturation=0.8,subtitles=")

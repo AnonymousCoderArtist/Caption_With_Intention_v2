@@ -2100,3 +2100,6 @@ button:focus-visible, [role="button"]:focus-visible, [role="slider"]:focus-visib
 .app-shell[data-workspace="Export"] .sidebar,.app-shell[data-workspace="Export"] .inspector{opacity:.45;}
 
 @media(max-width:700px){.workspace-tabs{overflow-x:auto;padding:6px;gap:2px;}.workspace-tabs button{padding:6px 9px;}}
+
+.grade-panel {display:flex;align-items:center;gap:16px;padding:12px 20px;flex-wrap:wrap;border-bottom:1px solid var(--border);}
+.grade-panel label {display:flex;gap:6px;align-items:center;font-size:12px;text-transform:capitalize;}.grade-panel input{width:70px;}.grade-panel small{color:var(--text-400);}

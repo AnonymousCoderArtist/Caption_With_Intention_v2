@@ -458,3 +458,7 @@ User reviewed the simplified cards and colored speaker timeline lanes, then appr
 ### Approved polish publication
 
 Workspace tabs: Edit, Text, Color, Speakers and Export are focused views of one project. User approved separate feature commits and separate pushes on 2026-11-23 at15:54IST. Full reviewed-round checks:663Python passed/9skipped,81frontend passed,production build and browser acceptance passed. Remaining feature commits follow.
+
+### Approved polish publication
+
+Source-video brightness, contrast and saturation now persist and reach final FFmpeg output before subtitles. Browser CSS grade is approximate. Caption colors stay unchanged by the video grade.

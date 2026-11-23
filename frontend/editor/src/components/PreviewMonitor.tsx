@@ -102,7 +102,7 @@ export function PreviewMonitor({ project, time, fps, mediaUrl, playing = false,
     <div className="program-monitor-title"><span>Program monitor</span><span>{mediaUrl ? 'Local video + captions' : 'Caption study · no source video'}</span></div>
     <div className="monitor" style={{ aspectRatio:ratio,width:monitorWidth||'100%',height:monitorWidth?monitorWidth/ratio:undefined,flexShrink:0 }}>
       <div className="monitor-frame" ref={frameRef}>
-        {mediaUrl ? <video ref={videoRef} src={mediaUrl} className="source-video" playsInline disableRemotePlayback disablePictureInPicture
+        {mediaUrl ? <video ref={videoRef} src={mediaUrl} className="source-video" style={{filter:`brightness(${1+(project?.video.brightness??0)}) contrast(${project?.video.contrast??1}) saturate(${project?.video.saturation??1})`}} playsInline disableRemotePlayback disablePictureInPicture
           onLoadedMetadata={e => {setMediaError(''); onMediaDuration?.(e.currentTarget.duration);}}
           onError={() => {setMediaError('This video could not be decoded by your browser.');onEnded?.();}}
           onEnded={onEnded} /> : <div className="scene" />}

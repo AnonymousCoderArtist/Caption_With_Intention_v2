@@ -457,6 +457,7 @@ export function App() {
       />
 
       <nav className="workspace-tabs" aria-label="Editor workspaces">{['Edit','Text','Color','Speakers','Export'].map(tab=><button key={tab} aria-pressed={workspace===tab} onClick={()=>{setWorkspace(tab);if(tab==='Speakers')setActivePanel('speakers');if(tab==='Text'||tab==='Edit')setActivePanel('events');if(tab==='Export')setShowRender(true);else if(!renderActive.current)setShowRender(false);}}>{tab}</button>)}</nav>
+      {workspace==='Color'&&<section className="grade-panel" aria-label="Video color grading"><b>Video color</b>{(['brightness','contrast','saturation'] as const).map(key=><label key={key}>{key}<DraftNumber aria-label={`Video ${key}`} value={project?.video[key]??(key==='brightness'?0:1)} min={key==='brightness'?-.5:key==='contrast'?.5:0} max={key==='brightness'?.5:2} step={.05} onCommit={value=>act(()=>clientRef.current!.updateProject({video:{[key]:value}}))}/></label>)}<button onClick={()=>act(()=>clientRef.current!.updateProject({video:{brightness:0,contrast:1,saturation:1}}))}>Reset grade</button><small>Source video only. Captions stay unchanged. Browser grade is approximate; final MP4 uses FFmpeg.</small></section>}
       <Toolbar
         onUndo={undo}
         onRedo={redo}

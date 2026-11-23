@@ -141,6 +141,7 @@ export interface VideoInfo {
   language: string | null;
   source_hash: string | null;
   proxy_path: string | null;
+  brightness?:number;contrast?:number;saturation?:number;
 }
 
 // ─── Project ────────────────────────────────────────────
