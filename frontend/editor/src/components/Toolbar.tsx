@@ -12,6 +12,7 @@ interface ToolbarProps {
   onExport: () => void;
   onSettings: () => void;
   onRender: () => void;
+  onAutoCaptions?: () => void;
 }
 
 export function Toolbar({
@@ -26,6 +27,7 @@ export function Toolbar({
   onExport,
   onSettings,
   onRender,
+  onAutoCaptions,
 }: ToolbarProps) {
   const TBtn = ({
     icon,
@@ -75,6 +77,7 @@ export function Toolbar({
       <button className="ghost" onClick={onSettings} title="Sequence settings and shortcuts" style={{ padding: "7px 12px" }}>
         <Icon name="settings" size={15} />
       </button>
+      {onAutoCaptions&&<button className="primary" onClick={onAutoCaptions} title="Make captions from the speech in your video, locally">Auto captions</button>}
       <button className="primary" onClick={onRender} title="Render captioned MP4 locally"><Icon name="film" size={15}/> Render video</button>
       <button className="ghost" onClick={onExport} title="Download project JSON" style={{ padding: "7px 16px", fontSize: 12 }}>
         <Icon name="export" size={15} />

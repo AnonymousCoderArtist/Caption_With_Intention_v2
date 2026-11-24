@@ -16,6 +16,7 @@ import { SpeakerPanel } from "@/components/SpeakerPanel";
 import { InspectorPanel } from "@/components/InspectorPanel";
 import {speakerReviewReasons,speakerReviewWindows} from "@/lib/speakerReview";
 import { RenderPanel } from "@/components/RenderPanel";
+import { CaptionPanel } from "@/components/CaptionPanel";
 import { DraftNumber } from "@/components/DraftNumber";
 import { Toast } from "@/components/Toast";
 
@@ -137,6 +138,9 @@ export function App() {
   const [mediaName, setMediaName] = useState('');
   const [sourceFile,setSourceFile]=useState<File|null>(null);
   const [showRender,setShowRender]=useState(false);
+  const [showCaptions,setShowCaptions]=useState(false);
+  const captionActive=useRef(false);
+  const onCaptionActive=useCallback((a:boolean)=>{captionActive.current=a;},[]);
   const renderActive=useRef(false);
   const onRenderActive=useCallback((active:boolean)=>{renderActive.current=active;},[]);
   const [mediaDuration, setMediaDuration] = useState<number | null>(null);
@@ -267,6 +271,16 @@ export function App() {
     }catch(error){if((error as any)?.name!=='AbortError')setDiskMessage('Disk autosave could not start. Browser autosave is still active.');}
   };
 
+  const applyGeneratedCaptions = useCallback((raw: unknown) => {
+    try {
+      const data = parseProject(JSON.stringify(raw));
+      diskSaver.current?.detach();sessionVersion.current++;
+      clientRef.current = new DemoClient(data); setSource('demo'); setProject(data);
+      setProjectName(data.project_name); setSelectedEventId(null); setSelectedIds([]); setTime(0); setPlaying(false); setStarted(true);
+      setWorkspace('Edit');clipboardRef.current=null;auditionEnd.current=null;setShowCaptions(false);
+      showToast(`${data.events.length} captions added. Review the words and timing, then assign speakers.`);
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Could not open the generated captions.', 'error'); }
+  }, []);
   const importProject = async (file: File) => {
     try {
       if (file.size > 20 * 1024 * 1024) throw new Error('Choose a project smaller than 20 MB.');
@@ -553,8 +567,10 @@ export function App() {
         onExport={exportProject}
         onSettings={() => setShowProjectSettings(v=>!v)}
         onRender={() => setShowRender(true)}
+        onAutoCaptions={() => {setShowRender(false);setShowCaptions(true);}}
       />
 
+      {showCaptions&&<CaptionPanel source={sourceFile} hasEvents={!!project?.events.length} onActiveChange={onCaptionActive} onClose={()=>setShowCaptions(false)} onDone={applyGeneratedCaptions}/>}
       {showRender&&<RenderPanel onActiveChange={onRenderActive} source={sourceFile} onClose={()=>setShowRender(false)} getProject={snapshotProject}/>}
       <details className="batch-controls" open={selectionExpanded} onToggle={e=>setSelectionExpanded(e.currentTarget.open)}><summary>Caption selection · {selectedIds.length} selected</summary><div className="batch-bar" aria-label="Caption selection">
         <button className="subtle" onClick={()=>setSelectedIds(project?.events.map(e=>e.id)??[])}>Select all captions</button>

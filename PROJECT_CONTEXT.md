@@ -542,3 +542,8 @@ User approved19:17IST. First commit derives merged review windows with1.5scontex
 Published optional OFF-by-default range panel and nearby-context playback. Inspector distinguishes text confidence from speaker review cues. Manual watch/assign/check only,no face analysis or automatic speaker/color changes.
 
 Review-range evidence/limits documented. Current difficult-clip padded coverage95-98%,so selective gating is not a measured compute saving. Face research remains separate and unshipped. No claim of calibrated identity accuracy.
+
+### Approved auto captions, preview sizing and timeline divider
+- `engine/editor/caption_jobs.py` plus `/api/captions/*`: local one-job-at-a-time transcription (faster-whisper, 60 s windows) returning an editable project. `CaptionPanel.tsx` and a toolbar button drive it. `scripts/make_project.py` is the CLI version. See `docs/AUTO_CAPTIONS.md` for limits (no speaker separation, English only, draft quality).
+- Preview sizing: timeline height scales with the window (120 to 300 px), the monitor keeps a minimum height and the center column scrolls on very short windows. At 1366x768 the monitor measured 428x241 (was 76x43). Toolbar rows still use about 280 px.
+- Draggable divider between preview and timeline (drag, double-click reset, arrow keys). Trim-edge drag was not confirmed in a headless test.

@@ -21,6 +21,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from engine.editor.api import EditorAPI
+from engine.editor.caption_jobs import CaptionJobs
 from engine.editor.render_jobs import RenderJobs
 
 logger = logging.getLogger("caption_with_intention")
@@ -31,6 +32,7 @@ FRONTEND_DIR = PROJECT_ROOT / "frontend" / "editor"
 api = EditorAPI()
 api_lock = threading.RLock()
 render_jobs = RenderJobs(PROJECT_ROOT / "Instal Font - RobotoFlex.ttf")
+caption_jobs = CaptionJobs()
 
 
 class CWIHandler(SimpleHTTPRequestHandler):
@@ -40,6 +42,9 @@ class CWIHandler(SimpleHTTPRequestHandler):
         logger.info(format, *args)
 
     def do_GET(self) -> None:
+        if self.path.startswith("/api/captions/"):
+            self.handle_captions()
+            return
         if self.path.startswith("/api/render/"):
             self.handle_render()
             return
@@ -51,6 +56,9 @@ class CWIHandler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self) -> None:
+        if self.path.startswith("/api/captions/"):
+            self.handle_captions()
+            return
         if self.path.startswith("/api/render/"):
             self.handle_render()
             return
@@ -75,6 +83,41 @@ class CWIHandler(SimpleHTTPRequestHandler):
             )
             return False
         return True
+
+    def handle_captions(self) -> None:
+        """Local automatic captions: create, upload source, status, cancel, result."""
+        if not self.local_request():
+            return
+        try:
+            parts = self.path.split("?", 1)[0].strip("/").split("/")
+            if self.command == "POST" and parts == ["api", "captions", "create"]:
+                length = int(self.headers.get("Content-Length", 0))
+                if not 0 <= length <= 4096:
+                    raise ValueError("Invalid caption request.")
+                data = json.loads(self.rfile.read(length) or b"{}")
+                result = caption_jobs.create(data if isinstance(data, dict) else {})
+            elif len(parts) == 4 and parts[:2] == ["api", "captions"]:
+                job_id, action = parts[2:]
+                if action == "source" and self.command == "POST":
+                    self.connection.settimeout(120)
+                    result = caption_jobs.upload(
+                        job_id, self.rfile, int(self.headers.get("Content-Length", 0))
+                    )
+                elif action == "cancel" and self.command == "POST":
+                    result = caption_jobs.cancel(job_id)
+                elif action == "status" and self.command == "GET":
+                    result = caption_jobs.status(job_id)
+                elif action == "result" and self.command == "GET":
+                    result = caption_jobs.result(job_id)
+                else:
+                    raise ValueError("Unknown caption action.")
+            else:
+                raise ValueError("Unknown caption endpoint.")
+            self._json_response(200, result)
+        except KeyError:
+            self._json_response(404, {"error": "This caption job expired. Start it again."})
+        except (ValueError, OSError) as exc:
+            self._json_response(400, {"error": str(exc)[:400]})
 
     def handle_render(self) -> None:
         """Only local requests can create/read render jobs; IDs are unguessable."""
@@ -281,6 +324,7 @@ def main() -> None:
         logger.info("Shutting down...")
     finally:
         render_jobs.close()
+        caption_jobs.close()
         server.server_close()
 
 
