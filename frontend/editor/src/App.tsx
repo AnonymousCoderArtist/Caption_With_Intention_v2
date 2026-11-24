@@ -90,6 +90,10 @@ export function App() {
   const [mobilePanel, setMobilePanel] = useState<'events'|'preview'|'properties'>('preview');
   const [workspace,setWorkspace]=useState('Edit');
   const [lightPreview,setLightPreview]=useState(false);
+  const [tlHeight,setTlHeight]=useState<number|null>(null);
+  const tlRef=useRef<HTMLDivElement>(null);
+  const clampTl=(h:number)=>Math.round(Math.max(110,Math.min(640,h)));
+  const startTlDrag=(e:React.PointerEvent<HTMLDivElement>)=>{e.preventDefault();const startY=e.clientY,startH=tlRef.current?.getBoundingClientRect().height??300;const move=(p:PointerEvent)=>setTlHeight(clampTl(startH+startY-p.clientY));const end=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',end);window.removeEventListener('pointercancel',end);};window.addEventListener('pointermove',move);window.addEventListener('pointerup',end);window.addEventListener('pointercancel',end);};
   const [activePanel, setActivePanel] = useState<ActivePanel>("events");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedIds,setSelectedIds]=useState<string[]>([]);
@@ -632,7 +636,10 @@ export function App() {
             onStep={step}
             onSkip={skip}
           />
-          <div className="timeline-area" style={{ padding: "0 16px 14px" }}>
+          <div className="panel-splitter" role="separator" aria-orientation="horizontal" tabIndex={0} title="Drag to resize the timeline. Double-click to reset." aria-label="Resize preview and timeline"
+            onPointerDown={startTlDrag} onDoubleClick={()=>setTlHeight(null)}
+            onKeyDown={e=>{const cur=tlRef.current?.getBoundingClientRect().height??300;if(e.key==='ArrowUp'){e.preventDefault();setTlHeight(clampTl(cur+30));}else if(e.key==='ArrowDown'){e.preventDefault();setTlHeight(clampTl(cur-30));}else if(e.key==='Home'||e.key==='Enter'){setTlHeight(null);}}}><span /></div>
+          <div className="timeline-area" ref={tlRef} style={{ padding: "0 16px 14px", ...(tlHeight?{height:tlHeight}:{}) }}>
             <Timeline key={sessionVersion.current}
               project={project}
               selectedEventId={selectedEventId}

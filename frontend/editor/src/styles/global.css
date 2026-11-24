@@ -2121,3 +2121,6 @@ button:focus-visible, [role="button"]:focus-visible, [role="slider"]:focus-visib
 .timeline-area { flex:0 0 auto; height:clamp(120px,22vh,300px); }
 .monitor-wrap { flex:1 1 0; min-height:clamp(250px,42vh,420px); }
 @media (max-height:520px) { .timeline-area { height:150px; } .monitor-wrap { min-height:230px; } }
+.panel-splitter { flex:0 0 12px; cursor:row-resize; display:flex; align-items:center; justify-content:center; touch-action:none; user-select:none; }
+.panel-splitter span { width:56px; height:4px; border-radius:2px; background:var(--border-strong,#4a463c); }
+.panel-splitter:hover span,.panel-splitter:focus-visible span { background:var(--accent); }
