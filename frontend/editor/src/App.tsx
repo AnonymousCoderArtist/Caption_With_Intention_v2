@@ -632,7 +632,7 @@ export function App() {
             onStep={step}
             onSkip={skip}
           />
-          <div className="timeline-area" style={{ flexShrink: 0, height: 300, padding: "0 16px 14px" }}>
+          <div className="timeline-area" style={{ padding: "0 16px 14px" }}>
             <Timeline key={sessionVersion.current}
               project={project}
               selectedEventId={selectedEventId}
