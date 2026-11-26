@@ -22,6 +22,67 @@ MODELS = {
 }
 ACTIVE = {"uploading", "transferring", "analyzing"}
 
+# Limits for transcripts the browser made itself (Web Speech API path).
+MAX_TRANSCRIPT_ENTRIES = 20000
+MAX_ENTRY_CHARS = 2000
+
+
+def build_project(data: dict) -> dict:
+    """Build an editable project from a transcript the browser already made.
+
+    The Web Speech API path recognizes speech inside the browser, so no video
+    upload and no speech model are needed here; this only validates the
+    transcript and runs the same project builder as the whisper path.
+    """
+    transcript = data.get("transcript")
+    if not isinstance(transcript, list) or not transcript:
+        raise ValueError("The browser did not send a transcript.")
+    if len(transcript) > MAX_TRANSCRIPT_ENTRIES:
+        raise ValueError("This transcript is too long for the editor.")
+    entries = []
+    for item in transcript:
+        if not isinstance(item, dict):
+            raise TypeError("The transcript from the browser is malformed.")
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        if len(text) > MAX_ENTRY_CHARS:
+            raise ValueError("A caption from the browser is too long.")
+        try:
+            start = float(item.get("start"))
+            end = float(item.get("end"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("The browser transcript has invalid timings.") from exc
+        if not (0.0 <= start < end):
+            raise ValueError("The browser transcript has invalid timings.")
+        entry = {"text": text, "start": start, "end": end, "source_model": "web-speech-api"}
+        confidence = item.get("confidence")
+        if isinstance(confidence, (int, float)) and 0.0 <= confidence <= 1.0:
+            entry["confidence"] = round(float(confidence), 3)
+        entries.append(entry)
+    if not entries:
+        raise ValueError("No speech was found in this video.")
+
+    def _bounded(value, low, high, fallback):
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return fallback
+        return min(high, max(low, number))
+
+    width = int(_bounded(data.get("width"), 16, 16384, 1920))
+    height = int(_bounded(data.get("height"), 16, 16384, 1080))
+    fps = _bounded(data.get("fps"), 1, 240, 30.0)
+
+    import json as _json
+
+    from engine.editor.editor import Editor
+
+    project = Editor().build_from_transcript(
+        entries, video_width=width, video_height=height, fps=fps, speakers=[]
+    )
+    return _json.loads(project.model_dump_json())
+
 
 class CaptionJobs:
     def __init__(self):

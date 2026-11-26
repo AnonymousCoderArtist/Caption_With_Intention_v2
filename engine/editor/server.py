@@ -20,6 +20,7 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from engine.editor import caption_jobs as caption_jobs_mod
 from engine.editor.api import EditorAPI
 from engine.editor.caption_jobs import CaptionJobs
 from engine.editor.render_jobs import RenderJobs
@@ -96,6 +97,15 @@ class CWIHandler(SimpleHTTPRequestHandler):
                     raise ValueError("Invalid caption request.")
                 data = json.loads(self.rfile.read(length) or b"{}")
                 result = caption_jobs.create(data if isinstance(data, dict) else {})
+            elif self.command == "POST" and parts == ["api", "captions", "build"]:
+                # Browser-made transcript (Web Speech API) -> editable project.
+                length = int(self.headers.get("Content-Length", 0))
+                if not 0 < length <= 4 * 1024**2:
+                    raise ValueError("Invalid caption request.")
+                data = json.loads(self.rfile.read(length) or b"{}")
+                if not isinstance(data, dict):
+                    raise ValueError("Invalid caption request.")
+                result = caption_jobs_mod.build_project(data)
             elif len(parts) == 4 and parts[:2] == ["api", "captions"]:
                 job_id, action = parts[2:]
                 if action == "source" and self.command == "POST":
@@ -116,7 +126,7 @@ class CWIHandler(SimpleHTTPRequestHandler):
             self._json_response(200, result)
         except KeyError:
             self._json_response(404, {"error": "This caption job expired. Start it again."})
-        except (ValueError, OSError) as exc:
+        except (TypeError, ValueError, OSError) as exc:
             self._json_response(400, {"error": str(exc)[:400]})
 
     def handle_render(self) -> None:
